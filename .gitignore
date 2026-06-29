@@ -1,0 +1,21 @@
+# Environment secrets
+.env
+.env.local
+.env.*.local
+
+# Frontend build
+frontend/node_modules/
+frontend/dist/
+
+# Backend build
+backend/sep-backend
+backend/tmp/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
