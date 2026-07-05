@@ -1,0 +1,36 @@
+# Secrets
+.env
+.env.local
+.env.*.local
+
+# Backend build artifacts
+backend/*.exe
+backend/tmp/
+
+# Node
+node_modules/
+dist/
+dist-ssr/
+*.local
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Editor/OS
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Claude Code local session data
+.claude/settings.local.json
+.claude/scheduled_tasks.lock
