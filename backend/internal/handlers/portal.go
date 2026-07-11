@@ -299,7 +299,7 @@ func GetVendorPortalDashboard(c *gin.Context) {
 			database.DB.QueryRow(`SELECT COUNT(*) FROM purchase_orders WHERE vendor_id=$1::uuid AND status NOT IN ('received','cancelled')`, vendID).Scan(&activePOs)
 			database.DB.QueryRow(`SELECT COUNT(*) FROM vendor_invoices WHERE vendor_id=$1::uuid AND status NOT IN ('paid')`, vendID).Scan(&unpaidInv)
 			database.DB.QueryRow(`SELECT COALESCE(SUM(total-paid_amount),0) FROM vendor_invoices WHERE vendor_id=$1::uuid AND status != 'paid'`, vendID).Scan(&outstanding)
-			database.DB.QueryRow(`SELECT COALESCE(SUM(total),0) FROM purchase_orders WHERE vendor_id=$1::uuid`, vendID).Scan(&totalReceived)
+			database.DB.QueryRow(`SELECT COALESCE(SUM(total_amount),0) FROM purchase_orders WHERE vendor_id=$1::uuid`, vendID).Scan(&totalReceived)
 
 			c.JSON(http.StatusOK, gin.H{
 				"success": true,
