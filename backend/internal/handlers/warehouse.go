@@ -237,9 +237,13 @@ func CreateMovement(c *gin.Context) {
 		return
 	}
 	if req.Type == "in" {
-		database.DB.Exec(`UPDATE inventory SET qty = qty + $1, updated_at = NOW() WHERE id = $2 AND company_id = $3`, req.Qty, req.InventoryID, companyID)
+		_, err = database.DB.Exec(`UPDATE inventory SET qty = qty + $1, updated_at = NOW() WHERE id = $2 AND company_id = $3`, req.Qty, req.InventoryID, companyID)
 	} else {
-		database.DB.Exec(`UPDATE inventory SET qty = GREATEST(0, qty - $1), updated_at = NOW() WHERE id = $2 AND company_id = $3`, req.Qty, req.InventoryID, companyID)
+		_, err = database.DB.Exec(`UPDATE inventory SET qty = GREATEST(0, qty - $1), updated_at = NOW() WHERE id = $2 AND company_id = $3`, req.Qty, req.InventoryID, companyID)
+	}
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Movement tercatat tapi gagal update stok: " + err.Error()})
+		return
 	}
 	req.InventoryID = mvID
 	c.JSON(http.StatusCreated, gin.H{"success": true, "data": gin.H{

@@ -201,7 +201,7 @@ func CreatePurchaseOrder(c *gin.Context) {
 	var id string
 	err := database.DB.QueryRow(
 		`INSERT INTO purchase_orders (company_id, po_number, vendor_id, vendor_name, total_amount, delivery_date, notes, status, order_date)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,'pending',NOW()) RETURNING id`,
+		 VALUES ($1,$2,NULLIF($3,'')::uuid,$4,$5,$6,$7,'pending',NOW()) RETURNING id`,
 		companyID, req.PONumber, req.VendorID, req.VendorName, req.TotalAmount, req.DeliveryDate, req.Notes,
 	).Scan(&id)
 	if err != nil {
@@ -378,7 +378,7 @@ func ConvertPRtoPO(c *gin.Context) {
 	var poID string
 	err = database.DB.QueryRow(
 		`INSERT INTO purchase_orders (company_id, po_number, vendor_id, vendor_name, total_amount, delivery_date, notes, status, order_date)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,'pending',NOW()) RETURNING id`,
+		 VALUES ($1,$2,NULLIF($3,'')::uuid,$4,$5,$6,$7,'pending',NOW()) RETURNING id`,
 		companyID, poNumber, req.VendorID, req.VendorName, totalAmount, req.DeliveryDate, req.Notes,
 	).Scan(&poID)
 	if err != nil {
@@ -469,17 +469,26 @@ func CreateGRN(c *gin.Context) {
 	}
 	// PUR-04: auto update inventory if inventory_id provided
 	if req.InventoryID != "" {
-		database.DB.Exec(
+		if _, err := database.DB.Exec(
 			`UPDATE inventory SET qty = qty + $1, updated_at = NOW() WHERE id = $2`,
 			req.ReceivedQty, req.InventoryID,
-		)
-		database.DB.Exec(
+		); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "GRN tercatat tapi gagal update stok: " + err.Error()})
+			return
+		}
+		if _, err := database.DB.Exec(
 			`INSERT INTO stock_movements (inventory_id, type, qty, reference, notes, created_by) VALUES ($1,'in',$2,$3,'GRN dari PO',$4)`,
 			req.InventoryID, req.ReceivedQty, req.POID, c.GetString("user_id"),
-		)
+		); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "GRN tercatat tapi gagal catat pergerakan stok: " + err.Error()})
+			return
+		}
 	}
 	// Update PO status
-	database.DB.Exec(`UPDATE purchase_orders SET status='delivered' WHERE id=$1`, req.POID)
+	if _, err := database.DB.Exec(`UPDATE purchase_orders SET status='delivered' WHERE id=$1`, req.POID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "GRN tercatat tapi gagal update status PO: " + err.Error()})
+		return
+	}
 	database.WriteAuditLog(c.GetString("user_id"), "CREATE", "goods_receipt", id, "GRN untuk PO: "+req.POID, c.ClientIP())
 	c.JSON(http.StatusCreated, gin.H{"success": true, "data": gin.H{
 		"id": id, "po_id": req.POID, "received_qty": req.ReceivedQty, "status": "received",

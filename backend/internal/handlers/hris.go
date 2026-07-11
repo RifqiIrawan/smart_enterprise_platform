@@ -65,10 +65,14 @@ func CreateEmployee(c *gin.Context) {
 		return
 	}
 	companyID := c.GetString("company_id")
-	database.DB.QueryRow(
+	err := database.DB.QueryRow(
 		"INSERT INTO employees (company_id, emp_number, name, email, department, position, salary, join_date) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id",
 		companyID, emp.EmpNumber, emp.Name, emp.Email, emp.Department, emp.Position, emp.Salary, emp.JoinDate,
 	).Scan(&emp.ID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": err.Error()})
+		return
+	}
 	database.WriteAuditLog(c.GetString("user_id"), "CREATE", "employee", emp.ID, "Tambah karyawan: "+emp.Name, c.ClientIP())
 	c.JSON(http.StatusCreated, gin.H{"success": true, "data": emp})
 }

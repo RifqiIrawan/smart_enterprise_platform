@@ -374,6 +374,16 @@ func Migrate() {
 			notes TEXT,
 			created_at TIMESTAMPTZ DEFAULT NOW()
 		)`,
+		// Reconcile purchase_orders against handlers/purchasing.go's expected schema — same
+		// drift class as purchase_requests above: this table already existed with an older
+		// shape (pr_id/item_name/amount/items_summary/grn_status, no vendor_id/total_amount/
+		// order_date/notes) before the CREATE TABLE definition evolved, so CREATE TABLE IF NOT
+		// EXISTS never added these, causing GET/POST /purchasing/po and PR->PO conversion to
+		// 500 on "column does not exist".
+		`ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS vendor_id    UUID`,
+		`ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS total_amount BIGINT DEFAULT 0`,
+		`ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS order_date   DATE DEFAULT CURRENT_DATE`,
+		`ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS notes        TEXT`,
 		`CREATE TABLE IF NOT EXISTS goods_receipts (
 			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 			po_id UUID REFERENCES purchase_orders(id),

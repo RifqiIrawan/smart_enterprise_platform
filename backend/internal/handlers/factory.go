@@ -57,10 +57,14 @@ func CreateWorkOrder(c *gin.Context) {
 		return
 	}
 	companyID := c.GetString("company_id")
-	database.DB.QueryRow(
+	err := database.DB.QueryRow(
 		"INSERT INTO work_orders (company_id, wo_number, product_name, target_qty, machine_id, status) VALUES ($1,$2,$3,$4,$5,'pending') RETURNING id",
 		companyID, wo.WONumber, wo.ProductName, wo.TargetQty, wo.MachineID,
 	).Scan(&wo.ID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": err.Error()})
+		return
+	}
 	database.WriteAuditLog(c.GetString("user_id"), "CREATE", "work_orders", wo.ID, "Buat WO "+wo.WONumber, c.ClientIP())
 	c.JSON(http.StatusCreated, gin.H{"success": true, "data": wo})
 }
