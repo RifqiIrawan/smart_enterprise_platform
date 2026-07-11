@@ -194,9 +194,9 @@ func RunMRP(c *gin.Context) {
 				prNum := fmt.Sprintf("PR-MRP/%s/%04d", time.Now().Format("2006"), prCount+1)
 				var prID string
 				database.DB.QueryRow(
-					`INSERT INTO purchase_requests (company_id, pr_number, department, item_name, unit, quantity, notes, status, created_by)
-					 VALUES ($1,$2,'Production',$3,$4,$5,'Auto dari MRP','pending',$6) RETURNING id`,
-					companyID, prNum, item.ItemName, item.Unit, netReq, userID,
+					`INSERT INTO purchase_requests (company_id, pr_number, department, item_name, unit, qty, notes, status, requester)
+					 VALUES ($1,$2,'Production',$3,$4,$5,'Auto dari MRP','pending','Sistem MRP') RETURNING id`,
+					companyID, prNum, item.ItemName, item.Unit, netReq,
 				).Scan(&prID)
 				if prID != "" {
 					autoPR = true

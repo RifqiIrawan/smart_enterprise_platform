@@ -348,6 +348,19 @@ func Migrate() {
 			updated_at TIMESTAMPTZ DEFAULT NOW(),
 			created_at TIMESTAMPTZ DEFAULT NOW()
 		)`,
+		// Reconcile purchase_requests against handlers/purchasing.go's expected schema: this
+		// table was originally created with an older shape (item_name/department/amount/
+		// priority/requested_by, no qty/unit/estimated_price/requester) before the CREATE
+		// TABLE definition above evolved — CREATE TABLE IF NOT EXISTS is a no-op on an
+		// existing table, so those columns never got added for real, causing GET/POST
+		// /purchasing/pr to 500 on "column does not exist".
+		`ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS requester       VARCHAR(255)`,
+		`ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS qty             INTEGER DEFAULT 0`,
+		`ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS unit            VARCHAR(50)`,
+		`ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS estimated_price BIGINT DEFAULT 0`,
+		`ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS notes           TEXT`,
+		`ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS remarks         TEXT`,
+		`ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS updated_at      TIMESTAMPTZ DEFAULT NOW()`,
 		`CREATE TABLE IF NOT EXISTS purchase_orders (
 			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 			company_id UUID,
