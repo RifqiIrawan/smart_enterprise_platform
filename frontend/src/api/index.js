@@ -377,9 +377,17 @@ export const rbacApi = {
   // Companies
   getCompanies: () => api.get('/rbac/companies'),
   createCompany: (data) => api.post('/rbac/companies', data),
-  // Fine-grained per-menu permissions (view/add/edit/delete tiers)
-  getMenuPermissions: (role, module) => api.get('/rbac/menu-permissions', { params: { ...(role ? { role } : {}), ...(module ? { module } : {}) } }),
-  updateMenuPermissions: (role, permissions) => api.post('/rbac/menu-permissions', { role, permissions }),
+  // Per-user company access (primary company + extra memberships)
+  getUserCompanies: (userId) => api.get(`/rbac/users/${userId}/companies`),
+  updateUserCompanies: (userId, companyIds) => api.post(`/rbac/users/${userId}/companies`, { company_ids: companyIds }),
+  // Master matrix: every visible user x every visible company, in one request
+  getCompanyAccessMatrix: () => api.get('/rbac/company-access-matrix'),
+  // Fine-grained per-menu permissions (view/add/edit/delete tiers). companyId is
+  // optional — omit to use the caller's own currently active company; pass it to
+  // target a different company the caller has access to (e.g. the Settings > Role
+  // & Permission company filter) without switching the whole session into it.
+  getMenuPermissions: (role, module, companyId) => api.get('/rbac/menu-permissions', { params: { ...(role ? { role } : {}), ...(module ? { module } : {}), ...(companyId ? { company_id: companyId } : {}) } }),
+  updateMenuPermissions: (role, permissions, companyId) => api.post('/rbac/menu-permissions', { role, permissions, ...(companyId ? { company_id: companyId } : {}) }),
   // Per-user overrides on top of the role default
   getUserMenuPermissions: (userId) => api.get(`/rbac/users/${userId}/menu-permissions`),
   updateUserMenuPermissions: (userId, permissions) => api.post(`/rbac/users/${userId}/menu-permissions`, { permissions }),

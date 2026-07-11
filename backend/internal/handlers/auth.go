@@ -5,6 +5,7 @@ import (
 	"sep/backend/internal/database"
 	"sep/backend/internal/middleware"
 	"sep/backend/internal/models"
+	"sep/backend/internal/permission"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -107,6 +108,69 @@ func ChangePassword(c *gin.Context) {
 	hashed, _ := bcrypt.GenerateFromPassword([]byte(req.NewPassword), 12)
 	database.DB.Exec("UPDATE users SET password=$1 WHERE id=$2", string(hashed), userID)
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Password berhasil diubah"})
+}
+
+// demoCompanies mirrors GetCompanies'/CreateCompany's demo-mode fixtures, so
+// SwitchCompany has something plausible to switch into without a real DB.
+var demoCompanies = map[string]string{
+	"demo-company-id": "PT. Smart Enterprise Indonesia",
+	"demo-company-2":  "PT. Anak Usaha Manufacturing",
+	"demo-company-3":  "PT. Distribusi Nusantara",
+}
+
+// SwitchCompany re-issues the requesting user's JWT with a different CompanyID
+// claim, scoped to a company they have access to (their primary company, a
+// user_companies membership row, or unconditionally if they're superadmin).
+// This changes only the current session's active company — it never rewrites
+// users.company_id (the user's enduring primary/home company).
+func SwitchCompany(c *gin.Context) {
+	var req struct {
+		CompanyID string `json:"company_id"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || req.CompanyID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "company_id wajib diisi"})
+		return
+	}
+	userID := c.GetString("user_id")
+	role := c.GetString("role")
+
+	if database.DB == nil {
+		name, ok := demoCompanies[req.CompanyID]
+		if !ok {
+			c.JSON(http.StatusForbidden, gin.H{"success": false, "message": "Anda tidak memiliki akses ke perusahaan ini"})
+			return
+		}
+		user := models.User{ID: userID, CompanyID: req.CompanyID, Name: "Admin Sistem", Email: "admin@sep.id", Role: role, IsActive: true}
+		company := models.Company{ID: req.CompanyID, Name: name}
+		token := generateToken(user)
+		c.JSON(http.StatusOK, gin.H{"success": true, "data": models.LoginResponse{Token: token, User: user, Company: company}})
+		return
+	}
+
+	if !permission.UserHasCompanyAccess(userID, role, req.CompanyID) {
+		c.JSON(http.StatusForbidden, gin.H{"success": false, "message": "Anda tidak memiliki akses ke perusahaan ini"})
+		return
+	}
+
+	var user models.User
+	err := database.DB.QueryRow(
+		`SELECT id, name, email, role, is_active FROM users WHERE id=$1`, userID,
+	).Scan(&user.ID, &user.Name, &user.Email, &user.Role, &user.IsActive)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "User tidak ditemukan"})
+		return
+	}
+	user.CompanyID = req.CompanyID
+
+	var company models.Company
+	if err := database.DB.QueryRow("SELECT id, name FROM companies WHERE id=$1", req.CompanyID).Scan(&company.ID, &company.Name); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "Perusahaan tidak ditemukan"})
+		return
+	}
+
+	token := generateToken(user)
+	database.WriteAuditLog(userID, "SWITCH_COMPANY", "companies", req.CompanyID, "Beralih ke perusahaan: "+company.Name, c.ClientIP())
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": models.LoginResponse{Token: token, User: user, Company: company}})
 }
 
 func generateToken(user models.User) string {

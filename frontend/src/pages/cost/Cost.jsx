@@ -5,6 +5,7 @@ import { useApi, useSubmit } from '@/hooks/useApi'
 import { costApi } from '@/api'
 import DataTable from '@/components/ui/DataTable'
 import Modal from '@/components/ui/Modal'
+import StatCard from '@/components/ui/StatCard'
 import { useAuthStore } from '@/store/authStore'
 import toast from 'react-hot-toast'
 
@@ -361,158 +362,146 @@ const centerReportColumns = [
   { key: 'overhead_rate', label: 'Overhead Rate', render: v => `${(Number(v) * 100).toFixed(1)}%` },
 ]
 
-// ─── Reports Tab ──────────────────────────────────────────────────────────────
-function LaporanTab() {
-  const [period, setPeriod] = useState(thisPeriod())
-  const [activeReport, setActiveReport] = useState('variance')
+// ─── Report tabs (Phase: split from in-page "Report Tabs" switcher into real
+// sidebar submenus — each is its own route now, no nested tab bar) ────────────
 
-  const { data: summary } = useApi(() => costApi.getCostSummary({ period }), [period])
-  const { data: variance } = useApi(() => costApi.getCostVariance({ period }), [period, activeReport === 'variance'])
-  const { data: cogs } = useApi(() => costApi.getCOGSReport({ period }), [period, activeReport === 'cogs'])
-  const { data: profitability } = useApi(() => costApi.getProfitabilityReport({ period }), [period, activeReport === 'profitability'])
-  const { data: centerReport } = useApi(() => costApi.getCostCenterReport({ period }), [period, activeReport === 'centers'])
-
-  const sumData = summary?.data || {}
-
-  const varianceItems = variance?.data?.value || []
-  const cogsItems = cogs?.data?.cogs_detail || []
-  const profitItems = profitability?.data?.value || []
-  const centerItems = centerReport?.data?.value || []
-
-  const mkFetchFn = (items) => async (params = {}) => {
-    let filtered = [...items]
-    const search = params['$search']?.toLowerCase()
-    if (search) filtered = filtered.filter(row => Object.values(row).some(v => String(v ?? '').toLowerCase().includes(search)))
-    if (params['$orderby']) {
-      const [key, dir] = params['$orderby'].split(' ')
-      filtered = [...filtered].sort((a, b) => dir === 'desc'
-        ? String(b[key] ?? '').localeCompare(String(a[key] ?? ''), undefined, { numeric: true })
-        : String(a[key] ?? '').localeCompare(String(b[key] ?? ''), undefined, { numeric: true }))
-    }
-    const top = params['$top'] ?? 10, skip = params['$skip'] ?? 0
-    return { '@odata.count': filtered.length, value: filtered.slice(skip, skip + top) }
+// Client-side search/sort/paginate over an already-fetched array, so DataTable's
+// built-in toolbar (search box, page size, pager) works the same as a server-backed
+// table would, without needing dedicated paginated endpoints for these reports.
+const mkFetchFn = (items) => async (params = {}) => {
+  let filtered = [...items]
+  const search = params['$search']?.toLowerCase()
+  if (search) filtered = filtered.filter(row => Object.values(row).some(v => String(v ?? '').toLowerCase().includes(search)))
+  if (params['$orderby']) {
+    const [key, dir] = params['$orderby'].split(' ')
+    filtered = [...filtered].sort((a, b) => dir === 'desc'
+      ? String(b[key] ?? '').localeCompare(String(a[key] ?? ''), undefined, { numeric: true })
+      : String(a[key] ?? '').localeCompare(String(b[key] ?? ''), undefined, { numeric: true }))
   }
+  const top = params['$top'] ?? 10, skip = params['$skip'] ?? 0
+  return { '@odata.count': filtered.length, value: filtered.slice(skip, skip + top) }
+}
+
+// Shared period picker + summary KPI row, reused by all 4 report tabs below.
+function CostReportHeader({ period, setPeriod, sumData }) {
+  return (
+    <>
+      <div className="flex items-center gap-3">
+        <label className="text-xs text-slate-500">Periode:</label>
+        <input type="month" className="bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-400" value={period} onChange={e => setPeriod(e.target.value)} />
+      </div>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard title="Total Biaya Produksi" value={fmt(sumData.total_production)} subtitle={`${sumData.wo_count || 0} WO`} icon={Package} color="indigo" />
+        <StatCard title="Varians vs Standard" value={fmt(sumData.total_variance)} subtitle={`${sumData.variance_pct || 0}%`} icon={(sumData.total_variance || 0) >= 0 ? TrendingUp : TrendingDown} color={(sumData.total_variance || 0) > 0 ? 'red' : 'emerald'} />
+        <StatCard title="Biaya Material" value={fmt(sumData.total_material)} subtitle={`${sumData.total_production ? ((sumData.total_material / sumData.total_production) * 100).toFixed(1) : 0}% dari total`} icon={Package} color="blue" />
+        <StatCard title="Cost Centers Aktif" value={sumData.cost_centers || 0} subtitle="departemen" icon={Building2} color="purple" />
+      </div>
+    </>
+  )
+}
+
+function useCostSummary(period) {
+  const { data: summary } = useApi(() => costApi.getCostSummary({ period }), [period])
+  return summary?.data || {}
+}
+
+function VarianceReportTab() {
+  const [period, setPeriod] = useState(thisPeriod())
+  const sumData = useCostSummary(period)
+  const { data: variance } = useApi(() => costApi.getCostVariance({ period }), [period])
+  const varianceItems = variance?.data?.value || []
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const varianceFetchFn = useCallback(mkFetchFn(varianceItems), [varianceItems])
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const cogsFetchFn = useCallback(mkFetchFn(cogsItems), [cogsItems])
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const profitFetchFn = useCallback(mkFetchFn(profitItems), [profitItems])
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const centerFetchFn = useCallback(mkFetchFn(centerItems), [centerItems])
-
-  const statCards = [
-    { label: 'Total Biaya Produksi', value: fmt(sumData.total_production), sub: `${sumData.wo_count || 0} WO`, icon: Package, color: 'indigo' },
-    { label: 'Varians vs Standard', value: fmt(sumData.total_variance), sub: `${sumData.variance_pct || 0}%`, icon: sumData.total_variance >= 0 ? TrendingUp : TrendingDown, color: (sumData.total_variance || 0) > 0 ? 'red' : 'emerald' },
-    { label: 'Biaya Material', value: fmt(sumData.total_material), sub: `${sumData.total_production ? ((sumData.total_material / sumData.total_production) * 100).toFixed(1) : 0}% dari total`, icon: Package, color: 'blue' },
-    { label: 'Cost Centers Aktif', value: sumData.cost_centers || 0, sub: 'departemen', icon: Building2, color: 'violet' },
-  ]
-
-  const colorMap = { indigo: 'from-indigo-500/20 to-indigo-600/10 border-indigo-200 text-indigo-600', red: 'from-red-500/20 to-red-600/10 border-red-500/30 text-red-300', emerald: 'from-emerald-500/20 to-emerald-600/10 border-emerald-200 text-emerald-300', blue: 'from-blue-500/20 to-blue-600/10 border-blue-500/30 text-blue-300', violet: 'from-violet-500/20 to-violet-600/10 border-violet-500/30 text-violet-300' }
-
-  const reports = [
-    { key: 'variance', label: 'Analisis Varians' },
-    { key: 'cogs', label: 'COGS Report' },
-    { key: 'profitability', label: 'Profitabilitas Produk' },
-    { key: 'centers', label: 'Cost Center Report' },
-  ]
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center gap-3">
-        <label className="text-xs text-slate-400">Periode:</label>
-        <input type="month" className="bg-slate-800 border border-slate-200 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:border-indigo-500" value={period} onChange={e => setPeriod(e.target.value)} />
-      </div>
-
-      {/* KPI Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        {statCards.map((card) => {
-          const Icon = card.icon
-          const cls = colorMap[card.color]
-          return (
-            <div key={card.label} className={`rounded-xl border bg-gradient-to-br ${cls} p-4`}>
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-xs text-slate-400">{card.label}</p>
-                  <p className="text-lg font-bold text-white mt-0.5">{card.value}</p>
-                  <p className="text-[11px] text-slate-500 mt-0.5">{card.sub}</p>
-                </div>
-                <Icon className={`w-8 h-8 opacity-20`} />
-              </div>
+      <CostReportHeader period={period} setPeriod={setPeriod} sumData={sumData} />
+      {variance?.data?.summary && (
+        <div className="grid grid-cols-3 gap-3">
+          {[
+            { label: 'Total Aktual', value: fmt(variance.data.summary.total_actual) },
+            { label: 'Total Standard', value: fmt(variance.data.summary.total_std) },
+            { label: 'Total Varians', value: `${variance.data.summary.total_variance > 0 ? '+' : ''}${fmt(variance.data.summary.total_variance)}`, cls: variance.data.summary.total_variance > 0 ? 'text-red-600' : 'text-emerald-700' },
+          ].map(s => (
+            <div key={s.label} className="p-3 rounded-xl bg-white border border-slate-200 shadow-sm text-center">
+              <p className="text-xs text-slate-400">{s.label}</p>
+              <p className={`text-base font-bold ${s.cls || 'text-slate-800'}`}>{s.value}</p>
             </div>
-          )
-        })}
-      </div>
+          ))}
+        </div>
+      )}
+      <DataTable fetchFn={varianceFetchFn} columns={varianceColumns} searchPlaceholder="Cari produk..." />
+    </div>
+  )
+}
 
-      {/* Report Tabs */}
-      <div className="flex gap-1 p-1 rounded-xl bg-slate-50 border border-slate-200">
-        {reports.map(r => (
-          <button key={r.key} onClick={() => setActiveReport(r.key)}
-            className={`flex-1 py-1.5 rounded-lg text-xs font-medium transition-all ${activeReport === r.key ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'}`}>
-            {r.label}
-          </button>
+function CogsReportTab() {
+  const [period, setPeriod] = useState(thisPeriod())
+  const sumData = useCostSummary(period)
+  const { data: cogs } = useApi(() => costApi.getCOGSReport({ period }), [period])
+  const cogsItems = cogs?.data?.cogs_detail || []
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const cogsFetchFn = useCallback(mkFetchFn(cogsItems), [cogsItems])
+
+  return (
+    <div className="space-y-5">
+      <CostReportHeader period={period} setPeriod={setPeriod} sumData={sumData} />
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {[
+          { label: 'Total COGS', value: fmt(cogs?.data?.total_cogs), cls: 'text-slate-800' },
+          { label: 'Gross Revenue', value: fmt(cogs?.data?.gross_revenue), cls: 'text-slate-800' },
+          { label: 'Gross Profit', value: fmt(cogs?.data?.gross_profit), cls: (cogs?.data?.gross_profit || 0) >= 0 ? 'text-emerald-700' : 'text-red-600' },
+          { label: 'Gross Margin', value: `${Number(cogs?.data?.gross_margin_pct || 0).toFixed(1)}%`, cls: 'text-indigo-600' },
+        ].map(s => (
+          <div key={s.label} className="p-3 rounded-xl bg-white border border-slate-200 shadow-sm text-center">
+            <p className="text-xs text-slate-600 mb-1 font-medium">{s.label}</p>
+            <p className={`text-base font-bold ${s.cls}`}>{s.value}</p>
+          </div>
         ))}
       </div>
+      <DataTable fetchFn={cogsFetchFn} columns={cogsColumns} searchPlaceholder="Cari kategori..." />
+    </div>
+  )
+}
 
-      {/* Variance Report */}
-      {activeReport === 'variance' && (
-        <div>
-          {variance?.data?.summary && (
-            <div className="grid grid-cols-3 gap-3 mb-4">
-              {[
-                { label: 'Total Aktual', value: fmt(variance.data.summary.total_actual) },
-                { label: 'Total Standard', value: fmt(variance.data.summary.total_std) },
-                { label: 'Total Varians', value: `${variance.data.summary.total_variance > 0 ? '+' : ''}${fmt(variance.data.summary.total_variance)}`, cls: variance.data.summary.total_variance > 0 ? 'text-red-600' : 'text-emerald-700' },
-              ].map(s => (
-                <div key={s.label} className="p-3 rounded-xl bg-white border border-slate-200 shadow-sm text-center">
-                  <p className="text-xs text-slate-400">{s.label}</p>
-                  <p className={`text-base font-bold ${s.cls || 'text-white'}`}>{s.value}</p>
-                </div>
-              ))}
-            </div>
-          )}
-          <DataTable fetchFn={varianceFetchFn} columns={varianceColumns} searchPlaceholder="Cari produk..." />
-        </div>
-      )}
+function ProfitabilityReportTab() {
+  const [period, setPeriod] = useState(thisPeriod())
+  const sumData = useCostSummary(period)
+  const { data: profitability } = useApi(() => costApi.getProfitabilityReport({ period }), [period])
+  const profitItems = profitability?.data?.value || []
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const profitFetchFn = useCallback(mkFetchFn(profitItems), [profitItems])
 
-      {/* COGS Report */}
-      {activeReport === 'cogs' && (
-        <div className="space-y-4">
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            {[
-              { label: 'Total COGS', value: fmt(cogs?.data?.total_cogs), cls: 'text-white' },
-              { label: 'Gross Revenue', value: fmt(cogs?.data?.gross_revenue), cls: 'text-white' },
-              { label: 'Gross Profit', value: fmt(cogs?.data?.gross_profit), cls: (cogs?.data?.gross_profit || 0) >= 0 ? 'text-emerald-700' : 'text-red-600' },
-              { label: 'Gross Margin', value: `${Number(cogs?.data?.gross_margin_pct || 0).toFixed(1)}%`, cls: 'text-indigo-600' },
-            ].map(s => (
-              <div key={s.label} className="p-3 rounded-xl bg-white border border-slate-200 shadow-sm text-center">
-                <p className="text-xs text-slate-600 mb-1 font-medium">{s.label}</p>
-                <p className={`text-base font-bold ${s.cls}`}>{s.value}</p>
-              </div>
-            ))}
-          </div>
-          <DataTable fetchFn={cogsFetchFn} columns={cogsColumns} searchPlaceholder="Cari kategori..." />
-        </div>
-      )}
+  return (
+    <div className="space-y-5">
+      <CostReportHeader period={period} setPeriod={setPeriod} sumData={sumData} />
+      <DataTable fetchFn={profitFetchFn} columns={profitColumns} searchPlaceholder="Cari produk..." />
+    </div>
+  )
+}
 
-      {/* Profitability Report */}
-      {activeReport === 'profitability' && (
-        <DataTable fetchFn={profitFetchFn} columns={profitColumns} searchPlaceholder="Cari produk..." />
-      )}
+function CenterReportTab() {
+  const [period, setPeriod] = useState(thisPeriod())
+  const sumData = useCostSummary(period)
+  const { data: centerReport } = useApi(() => costApi.getCostCenterReport({ period }), [period])
+  const centerItems = centerReport?.data?.value || []
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const centerFetchFn = useCallback(mkFetchFn(centerItems), [centerItems])
 
-      {/* Cost Center Report */}
-      {activeReport === 'centers' && (
-        <DataTable fetchFn={centerFetchFn} columns={centerReportColumns} searchPlaceholder="Cari cost center, departemen..." />
-      )}
+  return (
+    <div className="space-y-5">
+      <CostReportHeader period={period} setPeriod={setPeriod} sumData={sumData} />
+      <DataTable fetchFn={centerFetchFn} columns={centerReportColumns} searchPlaceholder="Cari cost center, departemen..." />
     </div>
   )
 }
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
-const VALID_TABS = ['centers', 'wo', 'std', 'laporan']
+const VALID_TABS = ['centers', 'wo', 'std', 'laporan', 'cogs', 'profitability', 'center-report']
 const SECTION_TITLE = {
-  centers: 'Cost Center', wo: 'Biaya WO', std: 'Standard Cost', laporan: 'Laporan & Analisis',
+  centers: 'Cost Center', wo: 'Biaya WO', std: 'Standard Cost', laporan: 'Analisis Varians',
+  cogs: 'COGS Report', profitability: 'Profitabilitas Produk', 'center-report': 'Cost Center Report',
 }
 
 export default function Cost() {
@@ -530,7 +519,10 @@ export default function Cost() {
       {tab === 'centers' && <CostCenterTab />}
       {tab === 'wo' && <WOCostTab />}
       {tab === 'std' && <StandardCostTab />}
-      {tab === 'laporan' && <LaporanTab />}
+      {tab === 'laporan' && <VarianceReportTab />}
+      {tab === 'cogs' && <CogsReportTab />}
+      {tab === 'profitability' && <ProfitabilityReportTab />}
+      {tab === 'center-report' && <CenterReportTab />}
     </div>
   )
 }

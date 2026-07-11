@@ -1,4 +1,5 @@
-import { useRef, useState } from 'react'
+import { useRef, useState, useEffect } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card'
 import Badge from '@/components/ui/Badge'
 import Button from '@/components/ui/Button'
@@ -34,16 +35,21 @@ const statusBadge = (s) => ({
 
 const emptyRule = { module: DOC_TYPES[0].module, doc_type: DOC_TYPES[0].doc_type, min_amount: '', levels: [{ level: 1, approver_role: 'manager' }], is_active: true }
 
-const TABS = [
-  { id: 'pending', label: 'Menunggu Persetujuan' },
-  { id: 'history', label: 'Riwayat' },
-  { id: 'rules', label: 'Konfigurasi Rule' },
-]
+const VALID_TABS = ['pending', 'history', 'rules']
 
 export default function ApprovalCenter() {
-  const { hasRole } = useAuthStore()
-  const isAdmin = hasRole('superadmin', 'admin')
-  const [activeTab, setActiveTab] = useState('pending')
+  const { canDo } = useAuthStore()
+  const canAct = canDo('approval.pending', 'edit')
+  const canViewRules = canDo('approval.rules', 'view')
+  const canAddRule = canDo('approval.rules', 'add')
+  const canEditRule = canDo('approval.rules', 'edit')
+  const canDeleteRule = canDo('approval.rules', 'delete')
+  const navigate = useNavigate()
+  const { tab } = useParams()
+  const activeTab = VALID_TABS.includes(tab) ? tab : 'pending'
+  useEffect(() => {
+    if (!VALID_TABS.includes(tab)) navigate('/approval/pending', { replace: true })
+  }, [tab])
   const [actionModal, setActionModal] = useState({ open: false, id: null, action: 'approve', note: '' })
   const [showRuleModal, setShowRuleModal] = useState(false)
   const [editRule, setEditRule] = useState(null)
@@ -135,19 +141,11 @@ export default function ApprovalCenter() {
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div className="flex flex-wrap gap-1 bg-gray-100 p-1 rounded-lg">
-          {TABS.filter(t => t.id !== 'rules' || isAdmin).map(t => (
-            <button key={t.id} onClick={() => setActiveTab(t.id)}
-              className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${activeTab === t.id ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
-              {t.label}
-            </button>
-          ))}
-        </div>
-        {activeTab === 'rules' && isAdmin && (
+      {activeTab === 'rules' && canViewRules && canAddRule && (
+        <div className="flex justify-end">
           <Button size="sm" icon={<Plus />} onClick={() => { setEditRule(null); setRuleForm(emptyRule); setShowRuleModal(true) }}>Tambah Rule</Button>
-        )}
-      </div>
+        </div>
+      )}
 
       {activeTab === 'pending' && (
         <Card>
@@ -155,7 +153,7 @@ export default function ApprovalCenter() {
           <CardContent>
             <DataTable ref={pendingRef} columns={pendingColumns} fetchFn={approvalApi.getPending}
               searchPlaceholder="Cari nomor dokumen..." defaultPageSize={15}
-              actions={(row) => (
+              actions={(row) => canAct && (
                 <div className="flex gap-1 flex-wrap">
                   <button onClick={() => setActionModal({ open: true, id: row.id, action: 'approve', note: '' })}
                     className="flex items-center gap-1 px-2 py-1 text-xs rounded-lg text-emerald-600 hover:bg-emerald-50 transition-colors font-medium">
@@ -182,22 +180,26 @@ export default function ApprovalCenter() {
         </Card>
       )}
 
-      {activeTab === 'rules' && isAdmin && (
+      {activeTab === 'rules' && canViewRules && (
         <Card>
           <CardHeader><CardTitle>Konfigurasi Rule Approval</CardTitle></CardHeader>
           <CardContent>
             <DataTable ref={rulesRef} columns={rulesColumns} fetchFn={approvalApi.getRules}
               searchPlaceholder="Cari jenis dokumen..." defaultPageSize={15}
-              actions={(row) => (
+              actions={(row) => (canEditRule || canDeleteRule) && (
                 <div className="flex gap-1 flex-wrap">
-                  <button onClick={() => openEditRule(row)}
-                    className="flex items-center gap-1 px-2 py-1 text-xs rounded-lg text-blue-600 hover:bg-blue-50 transition-colors font-medium">
-                    <Pencil className="w-3.5 h-3.5" /> Edit
-                  </button>
-                  <button onClick={() => handleDeleteRule(row)}
-                    className="flex items-center gap-1 px-2 py-1 text-xs rounded-lg text-red-500 hover:bg-red-50 transition-colors font-medium">
-                    <Trash2 className="w-3.5 h-3.5" /> Hapus
-                  </button>
+                  {canEditRule && (
+                    <button onClick={() => openEditRule(row)}
+                      className="flex items-center gap-1 px-2 py-1 text-xs rounded-lg text-blue-600 hover:bg-blue-50 transition-colors font-medium">
+                      <Pencil className="w-3.5 h-3.5" /> Edit
+                    </button>
+                  )}
+                  {canDeleteRule && (
+                    <button onClick={() => handleDeleteRule(row)}
+                      className="flex items-center gap-1 px-2 py-1 text-xs rounded-lg text-red-500 hover:bg-red-50 transition-colors font-medium">
+                      <Trash2 className="w-3.5 h-3.5" /> Hapus
+                    </button>
+                  )}
                 </div>
               )}
             />

@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"database/sql"
 	"net/http"
 	"sep/backend/internal/database"
 	"sep/backend/internal/odata"
@@ -32,18 +33,24 @@ func GetUsers(c *gin.Context) {
 	}
 	companyID := c.GetString("company_id")
 	rows := []gin.H{}
+	// Includes both primary members (users.company_id) and secondary members
+	// (granted via user_companies) of the requesting admin's active company, so an
+	// admin who switches into a company can still see/manage guest members there.
 	res, err := database.DB.Query(
-		`SELECT id, name, email, role, is_active, last_login FROM users WHERE company_id=$1 ORDER BY name`,
+		`SELECT id, name, email, role, is_active, last_login, (company_id=$1) AS is_primary
+		 FROM users
+		 WHERE company_id=$1 OR id IN (SELECT user_id FROM user_companies WHERE company_id=$1)
+		 ORDER BY name`,
 		companyID,
 	)
 	if err == nil && res != nil {
 		defer res.Close()
 		for res.Next() {
 			var id, name, email, role string
-			var isActive bool
+			var isActive, isPrimary bool
 			var lastLogin *time.Time
-			res.Scan(&id, &name, &email, &role, &isActive, &lastLogin)
-			rows = append(rows, gin.H{"id": id, "name": name, "email": email, "role": role, "is_active": isActive, "last_login": lastLogin})
+			res.Scan(&id, &name, &email, &role, &isActive, &lastLogin, &isPrimary)
+			rows = append(rows, gin.H{"id": id, "name": name, "email": email, "role": role, "is_active": isActive, "last_login": lastLogin, "is_primary": isPrimary})
 		}
 	}
 	c.JSON(http.StatusOK, odata.Response(rows, int64(len(rows))))
@@ -191,6 +198,10 @@ func GetAccessLogs(c *gin.Context) {
 
 // ─── MULTI-COMPANY ───────────────────────────────────────────────────────────
 
+// GetCompanies returns the companies the requesting user can access — their
+// primary company (users.company_id) plus any user_companies memberships;
+// superadmin sees every company. Flags which one is "current" based on the
+// requesting user's actively-scoped company (from their JWT).
 func GetCompanies(c *gin.Context) {
 	if database.DB == nil {
 		demo := []gin.H{
@@ -201,9 +212,45 @@ func GetCompanies(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"value": demo, "@odata.count": len(demo)})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"value": []gin.H{}, "@odata.count": 0})
+	userID := c.GetString("user_id")
+	activeCompanyID := c.GetString("company_id")
+	role := c.GetString("role")
+
+	var rows *sql.Rows
+	var err error
+	if role == "superadmin" {
+		rows, err = database.DB.Query(`SELECT id, name, npwp, address, email FROM companies ORDER BY name`)
+	} else {
+		rows, err = database.DB.Query(
+			`SELECT id, name, npwp, address, email FROM companies
+			 WHERE id = (SELECT company_id FROM users WHERE id=$1)
+			    OR id IN (SELECT company_id FROM user_companies WHERE user_id=$1)
+			 ORDER BY name`,
+			userID,
+		)
+	}
+	value := []gin.H{}
+	if err == nil && rows != nil {
+		defer rows.Close()
+		for rows.Next() {
+			var id, name, npwp, address, email string
+			rows.Scan(&id, &name, &npwp, &address, &email)
+			var userCount int
+			database.DB.QueryRow(`SELECT COUNT(*) FROM users WHERE company_id=$1`, id).Scan(&userCount)
+			value = append(value, gin.H{
+				"id": id, "name": name, "npwp": npwp, "city": address, "email": email,
+				"is_active": true, "user_count": userCount, "current": id == activeCompanyID,
+			})
+		}
+	}
+	c.JSON(http.StatusOK, gin.H{"value": value, "@odata.count": len(value)})
 }
 
+// CreateCompany inserts a new company, seeds its role_menu_permissions by cloning
+// the template (oldest/bootstrap) company's current tiers so it starts with sane
+// defaults instead of everything defaulting to "none", and — unless the creator is
+// superadmin, who can already reach any company — grants the creator access to it
+// via user_companies so they can immediately switch into and configure it.
 func CreateCompany(c *gin.Context) {
 	var req struct {
 		Name  string `json:"name"`
@@ -223,5 +270,230 @@ func CreateCompany(c *gin.Context) {
 		}})
 		return
 	}
-	c.JSON(http.StatusCreated, gin.H{"success": true})
+	var id string
+	err := database.DB.QueryRow(
+		`INSERT INTO companies (name, npwp, address, phone, email) VALUES ($1,$2,$3,$4,$5) RETURNING id`,
+		req.Name, req.NPWP, req.City, req.Phone, req.Email,
+	).Scan(&id)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "gagal membuat perusahaan"})
+		return
+	}
+	database.DB.Exec(
+		`INSERT INTO role_menu_permissions (company_id, role, menu_key, level)
+		 SELECT $1, role, menu_key, level FROM role_menu_permissions
+		 WHERE company_id = (SELECT id FROM companies ORDER BY created_at LIMIT 1)
+		 ON CONFLICT (company_id, role, menu_key) DO NOTHING`,
+		id,
+	)
+	requesterID := c.GetString("user_id")
+	if c.GetString("role") != "superadmin" {
+		database.DB.Exec(`INSERT INTO user_companies (user_id, company_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`, requesterID, id)
+	}
+	database.WriteAuditLog(requesterID, "CREATE", "companies", id, "Buat perusahaan baru: "+req.Name, c.ClientIP())
+	c.JSON(http.StatusCreated, gin.H{"success": true, "data": gin.H{
+		"id": id, "name": req.Name, "npwp": req.NPWP, "city": req.City, "is_active": true, "user_count": 0,
+	}})
+}
+
+// accessibleCompaniesCTE defines a "accessible_companies(id)" CTE (params:
+// $1=requester role, $2=requester user_id) yielding the set of company IDs
+// the requester can see — every company for superadmin, otherwise their own
+// primary company plus any user_companies memberships. Prepend to a query and
+// reference "SELECT id FROM accessible_companies" as many times as needed
+// without supplying additional params. Shared by GetCompanyAccessMatrix and
+// the ownership checks below, so a non-superadmin can never read or reassign
+// company access for a user outside the companies they themselves can see.
+const accessibleCompaniesCTE = `WITH accessible_companies AS (
+	SELECT id FROM companies WHERE $1 = 'superadmin'
+	UNION SELECT company_id FROM users WHERE id = $2
+	UNION SELECT company_id FROM user_companies WHERE user_id = $2
+)
+`
+
+// targetUserVisibleSQL (params: $1=requester role, $2=requester user_id,
+// $3=target user_id) reports whether the target user shares at least one
+// accessible company with the requester — i.e. the target is visible to them.
+const targetUserVisibleSQL = accessibleCompaniesCTE + `
+SELECT EXISTS (
+	SELECT 1 FROM users u WHERE u.id = $3 AND (
+		u.company_id IN (SELECT id FROM accessible_companies)
+		OR u.id IN (SELECT user_id FROM user_companies WHERE company_id IN (SELECT id FROM accessible_companies))
+	)
+)`
+
+// GetUserCompanies returns a user's primary company plus any extra companies
+// they've been granted access to via user_companies.
+func GetUserCompanies(c *gin.Context) {
+	userID := c.Param("id")
+	if database.DB == nil {
+		c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"primary_company_id": "", "company_ids": []string{}}})
+		return
+	}
+	role := c.GetString("role")
+	if role != "superadmin" {
+		var visible bool
+		database.DB.QueryRow(targetUserVisibleSQL, role, c.GetString("user_id"), userID).Scan(&visible)
+		if !visible {
+			c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "User tidak ditemukan"})
+			return
+		}
+	}
+	var primaryCompanyID string
+	if err := database.DB.QueryRow(`SELECT company_id FROM users WHERE id=$1`, userID).Scan(&primaryCompanyID); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "User tidak ditemukan"})
+		return
+	}
+	companyIDs := []string{}
+	rows, err := database.DB.Query(`SELECT company_id FROM user_companies WHERE user_id=$1`, userID)
+	if err == nil && rows != nil {
+		defer rows.Close()
+		for rows.Next() {
+			var cid string
+			rows.Scan(&cid)
+			companyIDs = append(companyIDs, cid)
+		}
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"primary_company_id": primaryCompanyID, "company_ids": companyIDs}})
+}
+
+// UpdateUserCompanies replaces a user's extra (non-primary) company memberships.
+// The primary company (users.company_id) is implicit and never stored in
+// user_companies — it's silently skipped if included in the request.
+func UpdateUserCompanies(c *gin.Context) {
+	userID := c.Param("id")
+	var req struct {
+		CompanyIDs []string `json:"company_ids"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "invalid request"})
+		return
+	}
+	if database.DB == nil {
+		c.JSON(http.StatusOK, gin.H{"success": true, "message": "Akses perusahaan diperbarui (demo mode)"})
+		return
+	}
+	role := c.GetString("role")
+	if role != "superadmin" {
+		var visible bool
+		database.DB.QueryRow(targetUserVisibleSQL, role, c.GetString("user_id"), userID).Scan(&visible)
+		if !visible {
+			c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "User tidak ditemukan"})
+			return
+		}
+		// Non-superadmin can only grant/revoke access to companies they themselves
+		// can already see — prevents using this endpoint to hand a user access to
+		// an unrelated company outside the requester's own visibility.
+		for _, cid := range req.CompanyIDs {
+			var companyVisible bool
+			database.DB.QueryRow(accessibleCompaniesCTE+`SELECT EXISTS (SELECT 1 FROM accessible_companies WHERE id = $3)`, role, c.GetString("user_id"), cid).Scan(&companyVisible)
+			if !companyVisible {
+				c.JSON(http.StatusForbidden, gin.H{"success": false, "message": "Anda tidak memiliki akses ke salah satu perusahaan yang dipilih"})
+				return
+			}
+		}
+	}
+	var primaryCompanyID string
+	database.DB.QueryRow(`SELECT company_id FROM users WHERE id=$1`, userID).Scan(&primaryCompanyID)
+	tx, err := database.DB.Begin()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "gagal menyimpan"})
+		return
+	}
+	tx.Exec(`DELETE FROM user_companies WHERE user_id=$1`, userID)
+	for _, cid := range req.CompanyIDs {
+		if cid == primaryCompanyID {
+			continue
+		}
+		tx.Exec(`INSERT INTO user_companies (user_id, company_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`, userID, cid)
+	}
+	if err := tx.Commit(); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "gagal menyimpan"})
+		return
+	}
+	database.WriteAuditLog(c.GetString("user_id"), "UPDATE", "user_companies", userID, "Update akses perusahaan utk user: "+userID, c.ClientIP())
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Akses perusahaan berhasil disimpan"})
+}
+
+// GetCompanyAccessMatrix returns, in one shot, every company and every user
+// visible to the requester (mirroring GetCompanies' access rule — all
+// companies for superadmin, otherwise the requester's own primary + secondary
+// companies), plus each user's full set of accessible company_ids (primary +
+// user_companies), so the frontend can render a User x Company access matrix
+// without an N+1 request per user.
+func GetCompanyAccessMatrix(c *gin.Context) {
+	if database.DB == nil {
+		c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{
+			"companies": []gin.H{
+				{"id": "demo-company-id", "name": "PT. Smart Enterprise Indonesia"},
+				{"id": "demo-company-2", "name": "PT. Anak Usaha Manufacturing"},
+			},
+			"users": []gin.H{
+				{"id": "USR-001", "name": "Admin Sistem", "email": "admin@sep.id", "role": "superadmin", "primary_company_id": "demo-company-id", "company_ids": []string{"demo-company-id", "demo-company-2"}},
+			},
+		}})
+		return
+	}
+	role := c.GetString("role")
+	userID := c.GetString("user_id")
+
+	companies := []gin.H{}
+	companyRows, err := database.DB.Query(accessibleCompaniesCTE+`
+		SELECT id, name FROM companies WHERE id IN (SELECT id FROM accessible_companies) ORDER BY name`,
+		role, userID,
+	)
+	if err == nil && companyRows != nil {
+		defer companyRows.Close()
+		for companyRows.Next() {
+			var id, name string
+			companyRows.Scan(&id, &name)
+			companies = append(companies, gin.H{"id": id, "name": name})
+		}
+	}
+
+	type userRow struct {
+		ID, Name, Email, Role, PrimaryCompanyID string
+	}
+	var users []userRow
+	userRows, err := database.DB.Query(accessibleCompaniesCTE+`
+		SELECT DISTINCT u.id, u.name, u.email, u.role, u.company_id
+		FROM users u
+		WHERE u.company_id IN (SELECT id FROM accessible_companies)
+		   OR u.id IN (SELECT user_id FROM user_companies WHERE company_id IN (SELECT id FROM accessible_companies))
+		ORDER BY u.name`,
+		role, userID,
+	)
+	if err == nil && userRows != nil {
+		defer userRows.Close()
+		for userRows.Next() {
+			var u userRow
+			userRows.Scan(&u.ID, &u.Name, &u.Email, &u.Role, &u.PrimaryCompanyID)
+			users = append(users, u)
+		}
+	}
+
+	grants := map[string][]string{}
+	grantRows, err := database.DB.Query(accessibleCompaniesCTE+`
+		SELECT user_id, company_id FROM user_companies WHERE company_id IN (SELECT id FROM accessible_companies)`,
+		role, userID,
+	)
+	if err == nil && grantRows != nil {
+		defer grantRows.Close()
+		for grantRows.Next() {
+			var uid, cid string
+			grantRows.Scan(&uid, &cid)
+			grants[uid] = append(grants[uid], cid)
+		}
+	}
+
+	usersOut := []gin.H{}
+	for _, u := range users {
+		companyIDs := append([]string{u.PrimaryCompanyID}, grants[u.ID]...)
+		usersOut = append(usersOut, gin.H{
+			"id": u.ID, "name": u.Name, "email": u.Email, "role": u.Role,
+			"primary_company_id": u.PrimaryCompanyID, "company_ids": companyIDs,
+		})
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"companies": companies, "users": usersOut}})
 }

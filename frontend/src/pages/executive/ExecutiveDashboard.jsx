@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
 import { executiveApi } from '@/api'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card'
 import {
   TrendingUp, Factory, Users, Package, ShieldCheck, Truck,
   AlertTriangle, AlertCircle, Info, CheckCircle, Target, Download,
-  LayoutDashboard, FileBarChart, Settings2, Maximize2, Minimize2
+  Settings2, Maximize2, Minimize2
 } from 'lucide-react'
 import {
   ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -19,11 +20,7 @@ const fmt = (n) => {
 
 const fmtPct = (n) => `${Number(n).toFixed(1)}%`
 
-const TABS = [
-  { id: 'overview',  label: 'Overview', icon: LayoutDashboard },
-  { id: 'report',    label: 'Management Report', icon: FileBarChart },
-  { id: 'targets',   label: 'Target KPI', icon: Target },
-]
+const VALID_TABS = ['overview', 'report', 'targets']
 
 const ALERT_STYLES = {
   critical: { bg: 'bg-rose-50 border-rose-200', icon: AlertCircle, color: 'text-rose-600', dot: 'bg-rose-500' },
@@ -129,7 +126,12 @@ function ReportSection({ section }) {
 }
 
 export default function ExecutiveDashboard() {
-  const [activeTab, setActiveTab] = useState('overview')
+  const navigate = useNavigate()
+  const { tab } = useParams()
+  const activeTab = VALID_TABS.includes(tab) ? tab : 'overview'
+  useEffect(() => {
+    if (!VALID_TABS.includes(tab)) navigate('/executive/overview', { replace: true })
+  }, [tab])
   const [period, setPeriod] = useState('thisMonth')
   const [dashData, setDashData] = useState(null)
   const [reportData, setReportData] = useState(null)
@@ -198,23 +200,6 @@ export default function ExecutiveDashboard() {
           )}
         </div>
       </div>
-
-      {/* Tabs */}
-      {!presentMode && (
-        <div className="flex gap-1 p-1 rounded-xl" style={{ backgroundColor: 'var(--bg-surface-3)' }}>
-          {TABS.map(t => {
-            const Icon = t.icon
-            return (
-              <button key={t.id} onClick={() => setActiveTab(t.id)}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                  activeTab === t.id ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'
-                }`}>
-                <Icon className="w-4 h-4" />{t.label}
-              </button>
-            )
-          })}
-        </div>
-      )}
 
       {/* ── OVERVIEW ── */}
       {(activeTab === 'overview' || presentMode) && (

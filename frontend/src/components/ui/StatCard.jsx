@@ -30,7 +30,7 @@ export default function StatCard({ title, label, value, subtitle, trend, icon: I
       <div className="flex items-start justify-between gap-4">
         <div className="flex-1 min-w-0">
           <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider truncate">{displayTitle}</p>
-          <p className="mt-2.5 text-2xl font-bold text-slate-900 leading-none">{value}</p>
+          <p className="mt-2.5 text-2xl font-bold text-slate-900 leading-none truncate" title={typeof value === 'string' ? value : undefined}>{value}</p>
           {subtitle && <p className="mt-1.5 text-xs text-slate-400">{subtitle}</p>}
           {trend !== undefined && (
             <div className={cn('mt-2.5 inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full', trendColor)}>

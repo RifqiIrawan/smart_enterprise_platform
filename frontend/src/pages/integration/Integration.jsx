@@ -1,4 +1,5 @@
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
 import Badge from '@/components/ui/Badge'
@@ -7,6 +8,7 @@ import { Label } from '@/components/ui/Label'
 import DataTable from '@/components/ui/DataTable'
 import { useApi, useSubmit } from '@/hooks/useApi'
 import { integrationApi } from '@/api'
+import { useAuthStore } from '@/store/authStore'
 import {
   Upload, Download, Key, Webhook, Package, Users, BookOpen,
   Warehouse, FileText, CheckCircle2, XCircle, AlertTriangle,
@@ -25,6 +27,8 @@ const IMPORT_ICONS = {
 }
 
 function ImportTab() {
+  const { canDo } = useAuthStore()
+  const canExecute = canDo('integration.import', 'add')
   const [step, setStep] = useState('select') // select | preview | done
   const [selectedType, setSelectedType] = useState(null)
   const [preview, setPreview] = useState(null)
@@ -122,9 +126,11 @@ function ImportTab() {
         )}
         <div className="flex justify-end gap-3">
           <Button variant="outline" onClick={() => setStep('select')}>Batal</Button>
-          <Button onClick={runExecute} disabled={executing || preview.valid_rows === 0}>
-            {executing ? 'Mengimport...' : `Import ${preview.valid_rows} Baris Valid`}
-          </Button>
+          {canExecute && (
+            <Button onClick={runExecute} disabled={executing || preview.valid_rows === 0}>
+              {executing ? 'Mengimport...' : `Import ${preview.valid_rows} Baris Valid`}
+            </Button>
+          )}
         </div>
       </div>
     )
@@ -325,6 +331,9 @@ const ALL_PERMISSIONS = [
 ]
 
 function APIKeysTab() {
+  const { canDo } = useAuthStore()
+  const canAdd = canDo('integration.apikeys', 'add')
+  const canDelete = canDo('integration.apikeys', 'delete')
   const { data, loading, refetch } = useApi(() => integrationApi.getAPIKeys())
   const [showCreate, setShowCreate] = useState(false)
   const [newKey, setNewKey] = useState(null)
@@ -388,11 +397,13 @@ function APIKeysTab() {
 
       {activeKeyTab === 'keys' && (
         <>
-          <div className="flex justify-end">
-            <Button size="sm" onClick={() => setShowCreate(true)}><Plus className="w-4 h-4 mr-1" /> Buat API Key</Button>
-          </div>
+          {canAdd && (
+            <div className="flex justify-end">
+              <Button size="sm" onClick={() => setShowCreate(true)}><Plus className="w-4 h-4 mr-1" /> Buat API Key</Button>
+            </div>
+          )}
 
-          {showCreate && (
+          {showCreate && canAdd && (
             <Card className="border-primary/40">
               <CardHeader className="pb-2"><CardTitle className="text-sm">API Key Baru</CardTitle></CardHeader>
               <CardContent className="space-y-4">
@@ -461,7 +472,7 @@ function APIKeysTab() {
                     <div className="text-xs text-muted-foreground">Hari ini: <span className="font-medium text-foreground">{k.calls_today}</span> calls</div>
                     <div className="text-xs text-muted-foreground">Bulan ini: <span className="font-medium text-foreground">{k.calls_month}</span> calls</div>
                     <div className="text-xs text-muted-foreground mt-1">Terakhir: {k.last_used}</div>
-                    {k.status === 'active' && (
+                    {k.status === 'active' && canDelete && (
                       <Button
                         size="sm" variant="ghost"
                         className="h-6 text-xs text-red-600 hover:text-red-700 mt-1"
@@ -493,6 +504,9 @@ function APIKeysTab() {
 // ─── Webhooks Tab ─────────────────────────────────────────────────────────────
 
 function WebhooksTab() {
+  const { canDo } = useAuthStore()
+  const canAdd = canDo('integration.webhooks', 'add')
+  const canDelete = canDo('integration.webhooks', 'delete')
   const { data, loading, refetch } = useApi(() => integrationApi.getWebhooks())
   const { data: eventsData } = useApi(() => integrationApi.getWebhookEvents())
   const [showCreate, setShowCreate] = useState(false)
@@ -554,11 +568,13 @@ function WebhooksTab() {
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-end">
-        <Button size="sm" onClick={() => setShowCreate(true)}><Plus className="w-4 h-4 mr-1" /> Tambah Webhook</Button>
-      </div>
+      {canAdd && (
+        <div className="flex justify-end">
+          <Button size="sm" onClick={() => setShowCreate(true)}><Plus className="w-4 h-4 mr-1" /> Tambah Webhook</Button>
+        </div>
+      )}
 
-      {showCreate && (
+      {showCreate && canAdd && (
         <Card className="border-primary/40">
           <CardHeader className="pb-2"><CardTitle className="text-sm">Webhook Baru</CardTitle></CardHeader>
           <CardContent className="space-y-4">
@@ -630,9 +646,11 @@ function WebhooksTab() {
                   <Button size="sm" variant="ghost" className="h-6 text-xs" onClick={() => setSelectedWebhook(wh)}>
                     <Activity className="w-3 h-3 mr-1" /> Log
                   </Button>
-                  <Button size="sm" variant="ghost" className="h-6 text-xs text-red-600" onClick={() => del(wh.id)}>
-                    <Trash2 className="w-3 h-3" />
-                  </Button>
+                  {canDelete && (
+                    <Button size="sm" variant="ghost" className="h-6 text-xs text-red-600" onClick={() => del(wh.id)}>
+                      <Trash2 className="w-3 h-3" />
+                    </Button>
+                  )}
                 </div>
               </div>
             </div>
@@ -645,15 +663,15 @@ function WebhooksTab() {
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
-const TABS = [
-  { id: 'import', label: 'Import Data', icon: Upload },
-  { id: 'export', label: 'Export Data', icon: Download },
-  { id: 'api-keys', label: 'API Keys', icon: Key },
-  { id: 'webhooks', label: 'Webhooks', icon: Zap },
-]
+const VALID_TABS = ['import', 'export', 'api-keys', 'webhooks']
 
 export default function Integration() {
-  const [activeTab, setActiveTab] = useState('import')
+  const navigate = useNavigate()
+  const { tab } = useParams()
+  const activeTab = VALID_TABS.includes(tab) ? tab : 'import'
+  useEffect(() => {
+    if (!VALID_TABS.includes(tab)) navigate('/integration/import', { replace: true })
+  }, [tab])
 
   return (
     <div className="space-y-6">
@@ -679,22 +697,6 @@ export default function Integration() {
       </div>
 
       <Card>
-        <CardHeader className="pb-0">
-          <div className="flex gap-6 border-b -mx-6 px-6">
-            {TABS.map(t => {
-              const Icon = t.icon
-              return (
-                <button
-                  key={t.id}
-                  onClick={() => setActiveTab(t.id)}
-                  className={`flex items-center gap-2 pb-3 text-sm font-medium border-b-2 transition-colors ${activeTab === t.id ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
-                >
-                  <Icon className="w-4 h-4" /> {t.label}
-                </button>
-              )
-            })}
-          </div>
-        </CardHeader>
         <CardContent className="pt-6">
           {activeTab === 'import' && <ImportTab />}
           {activeTab === 'export' && <ExportTab />}

@@ -45,6 +45,12 @@ func Migrate() {
 			email VARCHAR(255),
 			created_at TIMESTAMPTZ DEFAULT NOW()
 		)`,
+		// Bootstrap the first company before anything below seeds company-scoped rows
+		// (role_menu_permissions, etc.) — must run before seedAdmin(), which itself now
+		// just SELECTs this row instead of inserting its own (see seedAdmin below).
+		`INSERT INTO companies (name, email)
+		 SELECT 'PT. Smart Enterprise Indonesia', 'info@sep.id'
+		 WHERE NOT EXISTS (SELECT 1 FROM companies)`,
 		`CREATE TABLE IF NOT EXISTS users (
 			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 			company_id UUID REFERENCES companies(id),
@@ -56,6 +62,13 @@ func Migrate() {
 			is_active BOOLEAN DEFAULT TRUE,
 			last_login TIMESTAMPTZ,
 			created_at TIMESTAMPTZ DEFAULT NOW()
+		)`,
+		// Extra company memberships beyond a user's primary users.company_id — grants
+		// access to switch into additional companies without changing their home company.
+		`CREATE TABLE IF NOT EXISTS user_companies (
+			user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			company_id UUID NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+			PRIMARY KEY (user_id, company_id)
 		)`,
 		`CREATE TABLE IF NOT EXISTS audit_logs (
 			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -411,145 +424,245 @@ func Migrate() {
 			updated_at TIMESTAMPTZ DEFAULT NOW(),
 			UNIQUE(user_id, menu_key)
 		)`,
-		`INSERT INTO role_menu_permissions (role, menu_key, level)
-		 SELECT r.role, m.menu_key, r.level FROM
+		// Multi-company: role/user menu permission tiers become company-scoped, so the
+		// same role/user can have a different tier in different companies. Retrofit onto
+		// the tables above the same way category/qty/updated_at were retrofitted onto
+		// inventory previously — ADD COLUMN, backfill, THEN tighten to NOT NULL, then swap
+		// the unique constraint. Must run after the companies-bootstrap INSERT above and
+		// BEFORE the legacy per-role seed INSERTs below (those now include company_id too).
+		`ALTER TABLE role_menu_permissions ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id)`,
+		`UPDATE role_menu_permissions SET company_id = (SELECT id FROM companies ORDER BY created_at LIMIT 1) WHERE company_id IS NULL`,
+		`ALTER TABLE role_menu_permissions ALTER COLUMN company_id SET NOT NULL`,
+		`ALTER TABLE role_menu_permissions DROP CONSTRAINT IF EXISTS role_menu_permissions_role_menu_key_key`,
+		`DO $$ BEGIN
+			IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'role_menu_permissions_company_role_menu_key_key') THEN
+				ALTER TABLE role_menu_permissions ADD CONSTRAINT role_menu_permissions_company_role_menu_key_key UNIQUE (company_id, role, menu_key);
+			END IF;
+		END $$`,
+		`ALTER TABLE user_menu_permissions ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id)`,
+		`UPDATE user_menu_permissions ump SET company_id = COALESCE(
+			(SELECT company_id FROM users WHERE id = ump.user_id),
+			(SELECT id FROM companies ORDER BY created_at LIMIT 1)
+		) WHERE company_id IS NULL`,
+		`ALTER TABLE user_menu_permissions ALTER COLUMN company_id SET NOT NULL`,
+		`ALTER TABLE user_menu_permissions DROP CONSTRAINT IF EXISTS user_menu_permissions_user_id_menu_key_key`,
+		`DO $$ BEGIN
+			IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'user_menu_permissions_company_user_menu_key_key') THEN
+				ALTER TABLE user_menu_permissions ADD CONSTRAINT user_menu_permissions_company_user_menu_key_key UNIQUE (company_id, user_id, menu_key);
+			END IF;
+		END $$`,
+		`INSERT INTO role_menu_permissions (company_id, role, menu_key, level)
+		 SELECT (SELECT id FROM companies ORDER BY created_at LIMIT 1), r.role, m.menu_key, r.level FROM
 		 (VALUES ('superadmin','edit'),('admin','edit'),('finance','view'),('hr','none'),('warehouse','view'),
 		         ('sales','none'),('purchasing','edit'),('operator','none'),('manager','view'),('viewer','view')) AS r(role, level)
 		 CROSS JOIN (VALUES ('purchasing.pr'),('purchasing.po'),('purchasing.rfq'),('purchasing.grn'),('purchasing.vendor')) AS m(menu_key)
-		 ON CONFLICT (role, menu_key) DO NOTHING`,
-		`INSERT INTO role_menu_permissions (role, menu_key, level)
-		 SELECT r.role, m.menu_key, r.level FROM
+		 ON CONFLICT (company_id, role, menu_key) DO NOTHING`,
+		`INSERT INTO role_menu_permissions (company_id, role, menu_key, level)
+		 SELECT (SELECT id FROM companies ORDER BY created_at LIMIT 1), r.role, m.menu_key, r.level FROM
 		 (VALUES ('superadmin','edit'),('admin','edit'),('finance','view'),('hr','none'),('warehouse','none'),
 		         ('sales','edit'),('purchasing','none'),('operator','none'),('manager','view'),('viewer','view')) AS r(role, level)
 		 CROSS JOIN (VALUES ('sales.so'),('sales.do'),('sales.invoice'),('sales.quotation'),('sales.retur'),('sales.crm'),('sales.customer')) AS m(menu_key)
-		 ON CONFLICT (role, menu_key) DO NOTHING`,
-		`INSERT INTO role_menu_permissions (role, menu_key, level)
-		 SELECT r.role, m.menu_key, r.level FROM
+		 ON CONFLICT (company_id, role, menu_key) DO NOTHING`,
+		`INSERT INTO role_menu_permissions (company_id, role, menu_key, level)
+		 SELECT (SELECT id FROM companies ORDER BY created_at LIMIT 1), r.role, m.menu_key, r.level FROM
 		 (VALUES ('superadmin','edit'),('admin','view'),('finance','edit'),('hr','none'),('warehouse','none'),
 		         ('sales','none'),('purchasing','none'),('operator','none'),('manager','view'),('viewer','none')) AS r(role, level)
 		 CROSS JOIN (VALUES ('finance.bank'),('finance.ap'),('finance.ar'),('finance.aging-ap'),('finance.aging-ar'),('finance.recon'),('finance.petty-cash')) AS m(menu_key)
-		 ON CONFLICT (role, menu_key) DO NOTHING`,
-		`INSERT INTO role_menu_permissions (role, menu_key, level)
-		 SELECT r.role, m.menu_key, r.level FROM
+		 ON CONFLICT (company_id, role, menu_key) DO NOTHING`,
+		`INSERT INTO role_menu_permissions (company_id, role, menu_key, level)
+		 SELECT (SELECT id FROM companies ORDER BY created_at LIMIT 1), r.role, m.menu_key, r.level FROM
 		 (VALUES ('superadmin','edit'),('admin','view'),('finance','none'),('hr','edit'),('warehouse','none'),
 		         ('sales','none'),('purchasing','none'),('operator','none'),('manager','view'),('viewer','none')) AS r(role, level)
 		 CROSS JOIN (VALUES ('hris.hrdashboard'),('hris.employee'),('hris.attendance'),('hris.leave'),('hris.payroll'),
 		                     ('hris.payslip'),('hris.recruitment'),('hris.training'),('hris.kpi'),('hris.overtime'),('hris.orgchart')) AS m(menu_key)
-		 ON CONFLICT (role, menu_key) DO NOTHING`,
-		`INSERT INTO role_menu_permissions (role, menu_key, level)
-		 SELECT r.role, m.menu_key, r.level FROM
+		 ON CONFLICT (company_id, role, menu_key) DO NOTHING`,
+		`INSERT INTO role_menu_permissions (company_id, role, menu_key, level)
+		 SELECT (SELECT id FROM companies ORDER BY created_at LIMIT 1), r.role, m.menu_key, r.level FROM
 		 (VALUES ('superadmin','edit'),('admin','edit'),('finance','none'),('hr','none'),('warehouse','view'),
 		         ('sales','none'),('purchasing','none'),('operator','edit'),('manager','view'),('viewer','view')) AS r(role, level)
 		 CROSS JOIN (VALUES ('factory.overview'),('factory.workorder'),('factory.machines'),('factory.bom'),('factory.downtime'),
 		                     ('factory.workcenters'),('factory.routing'),('factory.oee'),('factory.scrap'),('factory.capacity'),('factory.report')) AS m(menu_key)
-		 ON CONFLICT (role, menu_key) DO NOTHING`,
-		`INSERT INTO role_menu_permissions (role, menu_key, level)
-		 SELECT r.role, m.menu_key, r.level FROM
+		 ON CONFLICT (company_id, role, menu_key) DO NOTHING`,
+		`INSERT INTO role_menu_permissions (company_id, role, menu_key, level)
+		 SELECT (SELECT id FROM companies ORDER BY created_at LIMIT 1), r.role, m.menu_key, r.level FROM
 		 (VALUES ('superadmin','edit'),('admin','edit'),('finance','view'),('hr','none'),('warehouse','edit'),
 		         ('sales','none'),('purchasing','view'),('operator','edit'),('manager','view'),('viewer','view')) AS r(role, level)
 		 CROSS JOIN (VALUES ('warehouse.inventory'),('warehouse.movements'),('warehouse.alerts'),('warehouse.opname')) AS m(menu_key)
-		 ON CONFLICT (role, menu_key) DO NOTHING`,
-		`INSERT INTO role_menu_permissions (role, menu_key, level)
-		 SELECT r.role, m.menu_key, r.level FROM
+		 ON CONFLICT (company_id, role, menu_key) DO NOTHING`,
+		`INSERT INTO role_menu_permissions (company_id, role, menu_key, level)
+		 SELECT (SELECT id FROM companies ORDER BY created_at LIMIT 1), r.role, m.menu_key, r.level FROM
 		 (VALUES ('superadmin','edit'),('admin','view'),('finance','edit'),('hr','none'),('warehouse','none'),
 		         ('sales','none'),('purchasing','none'),('operator','none'),('manager','view'),('viewer','none')) AS r(role, level)
 		 CROSS JOIN (VALUES ('accounting.dashboard'),('accounting.journal'),('accounting.coa'),('accounting.gl'),
 		                     ('accounting.trial-balance'),('accounting.cashflow'),('accounting.closing'),('accounting.comparative')) AS m(menu_key)
-		 ON CONFLICT (role, menu_key) DO NOTHING`,
-		`INSERT INTO role_menu_permissions (role, menu_key, level)
-		 SELECT r.role, m.menu_key, r.level FROM
+		 ON CONFLICT (company_id, role, menu_key) DO NOTHING`,
+		`INSERT INTO role_menu_permissions (company_id, role, menu_key, level)
+		 SELECT (SELECT id FROM companies ORDER BY created_at LIMIT 1), r.role, m.menu_key, r.level FROM
 		 (VALUES ('superadmin','edit'),('admin','view'),('finance','edit'),('hr','none'),('warehouse','none'),
 		         ('sales','none'),('purchasing','none'),('operator','none'),('manager','view'),('viewer','none')) AS r(role, level)
 		 CROSS JOIN (VALUES ('tax.ppn'),('tax.pph21'),('tax.pph23'),('tax.bpjs'),('tax.nsfp'),('tax.efaktur'),('tax.spt-ppn'),('tax.config')) AS m(menu_key)
-		 ON CONFLICT (role, menu_key) DO NOTHING`,
-		`INSERT INTO role_menu_permissions (role, menu_key, level)
-		 SELECT r.role, m.menu_key, r.level FROM
+		 ON CONFLICT (company_id, role, menu_key) DO NOTHING`,
+		`INSERT INTO role_menu_permissions (company_id, role, menu_key, level)
+		 SELECT (SELECT id FROM companies ORDER BY created_at LIMIT 1), r.role, m.menu_key, r.level FROM
 		 (VALUES ('superadmin','edit'),('admin','view'),('finance','none'),('hr','none'),('warehouse','none'),
 		         ('sales','none'),('purchasing','none'),('operator','edit'),('manager','view'),('viewer','none')) AS r(role, level)
 		 CROSS JOIN (VALUES ('qms.inspeksi'),('qms.ncr'),('qms.capa'),('qms.kalibrasi')) AS m(menu_key)
-		 ON CONFLICT (role, menu_key) DO NOTHING`,
-		`INSERT INTO role_menu_permissions (role, menu_key, level)
-			 SELECT r.role, m.menu_key, r.level FROM
+		 ON CONFLICT (company_id, role, menu_key) DO NOTHING`,
+		`INSERT INTO role_menu_permissions (company_id, role, menu_key, level)
+			 SELECT (SELECT id FROM companies ORDER BY created_at LIMIT 1), r.role, m.menu_key, r.level FROM
 			 (VALUES ('superadmin','edit'),('admin','view'),('finance','edit'),('hr','none'),('warehouse','none'),
 			         ('sales','none'),('purchasing','none'),('operator','none'),('manager','view'),('viewer','none')) AS r(role, level)
 			 CROSS JOIN (VALUES ('budget.master'),('budget.vsactual'),('budget.alerts'),('budget.forecast'),('budget.scenarios')) AS m(menu_key)
-			 ON CONFLICT (role, menu_key) DO NOTHING`,
-		`INSERT INTO role_menu_permissions (role, menu_key, level)
-			 SELECT r.role, m.menu_key, r.level FROM
+			 ON CONFLICT (company_id, role, menu_key) DO NOTHING`,
+		`INSERT INTO role_menu_permissions (company_id, role, menu_key, level)
+			 SELECT (SELECT id FROM companies ORDER BY created_at LIMIT 1), r.role, m.menu_key, r.level FROM
 			 (VALUES ('superadmin','edit'),('admin','view'),('finance','none'),('hr','none'),('warehouse','none'),
 			         ('sales','none'),('purchasing','none'),('operator','none'),('manager','view'),('viewer','none')) AS r(role, level)
 			 CROSS JOIN (VALUES ('mrp.engine'),('mrp.jadwal'),('mrp.routing'),('mrp.lot')) AS m(menu_key)
-			 ON CONFLICT (role, menu_key) DO NOTHING`,
-		`INSERT INTO role_menu_permissions (role, menu_key, level)
-			 SELECT r.role, m.menu_key, r.level FROM
+			 ON CONFLICT (company_id, role, menu_key) DO NOTHING`,
+		`INSERT INTO role_menu_permissions (company_id, role, menu_key, level)
+			 SELECT (SELECT id FROM companies ORDER BY created_at LIMIT 1), r.role, m.menu_key, r.level FROM
 			 (VALUES ('superadmin','edit'),('admin','view'),('finance','edit'),('hr','none'),('warehouse','none'),
 			         ('sales','none'),('purchasing','none'),('operator','none'),('manager','view'),('viewer','none')) AS r(role, level)
-			 CROSS JOIN (VALUES ('cost.centers'),('cost.wo'),('cost.std'),('cost.laporan')) AS m(menu_key)
-			 ON CONFLICT (role, menu_key) DO NOTHING`,
-		`INSERT INTO role_menu_permissions (role, menu_key, level)
-			 SELECT r.role, m.menu_key, r.level FROM
+			 CROSS JOIN (VALUES ('cost.centers'),('cost.wo'),('cost.std'),('cost.laporan'),
+			                     ('cost.cogs'),('cost.profitability'),('cost.centerreport')) AS m(menu_key)
+			 ON CONFLICT (company_id, role, menu_key) DO NOTHING`,
+		`INSERT INTO role_menu_permissions (company_id, role, menu_key, level)
+			 SELECT (SELECT id FROM companies ORDER BY created_at LIMIT 1), r.role, m.menu_key, r.level FROM
 			 (VALUES ('superadmin','edit'),('admin','edit'),('finance','none'),('hr','none'),('warehouse','none'),
 			         ('sales','none'),('purchasing','none'),('operator','edit'),('manager','view'),('viewer','view')) AS r(role, level)
 			 CROSS JOIN (VALUES ('asset.assets'),('asset.maintenance'),('asset.pm'),('asset.spareparts'),('asset.depreciation')) AS m(menu_key)
-			 ON CONFLICT (role, menu_key) DO NOTHING`,
-		`INSERT INTO role_menu_permissions (role, menu_key, level)
-			 SELECT r.role, m.menu_key, r.level FROM
+			 ON CONFLICT (company_id, role, menu_key) DO NOTHING`,
+		`INSERT INTO role_menu_permissions (company_id, role, menu_key, level)
+			 SELECT (SELECT id FROM companies ORDER BY created_at LIMIT 1), r.role, m.menu_key, r.level FROM
 			 (VALUES ('superadmin','edit'),('admin','edit'),('finance','view'),('hr','view'),('warehouse','edit'),
 			         ('sales','view'),('purchasing','edit'),('operator','edit'),('manager','view'),('viewer','view')) AS r(role, level)
 			 CROSS JOIN (VALUES ('vehicle.fleet'),('vehicle.fuel')) AS m(menu_key)
-			 ON CONFLICT (role, menu_key) DO NOTHING`,
-		`INSERT INTO role_menu_permissions (role, menu_key, level)
-			 SELECT r.role, m.menu_key, r.level FROM
+			 ON CONFLICT (company_id, role, menu_key) DO NOTHING`,
+		`INSERT INTO role_menu_permissions (company_id, role, menu_key, level)
+			 SELECT (SELECT id FROM companies ORDER BY created_at LIMIT 1), r.role, m.menu_key, r.level FROM
 			 (VALUES ('superadmin','edit'),('admin','view'),('finance','view'),('hr','view'),('warehouse','view'),
 			         ('sales','view'),('purchasing','view'),('operator','none'),('manager','view'),('viewer','view')) AS r(role, level)
 			 CROSS JOIN (VALUES ('analytics.executive'),('analytics.operational'),('analytics.hr'),('analytics.module'),
 			                     ('analytics.comparison'),('analytics.forecast'),('analytics.predictive'),
 			                     ('analytics.anomalies'),('analytics.price')) AS m(menu_key)
-			 ON CONFLICT (role, menu_key) DO NOTHING`,
-		`INSERT INTO role_menu_permissions (role, menu_key, level)
-			 SELECT r.role, m.menu_key, r.level FROM
+			 ON CONFLICT (company_id, role, menu_key) DO NOTHING`,
+		`INSERT INTO role_menu_permissions (company_id, role, menu_key, level)
+			 SELECT (SELECT id FROM companies ORDER BY created_at LIMIT 1), r.role, m.menu_key, r.level FROM
 			 (VALUES ('superadmin','edit'),('admin','edit'),('finance','edit'),('hr','view'),('warehouse','view'),
 			         ('sales','view'),('purchasing','view'),('operator','none'),('manager','view'),('viewer','view')) AS r(role, level)
 			 CROSS JOIN (VALUES ('analytics.custom')) AS m(menu_key)
-			 ON CONFLICT (role, menu_key) DO NOTHING`,
-		`INSERT INTO role_menu_permissions (role, menu_key, level)
-			 SELECT r.role, m.menu_key, r.level FROM
+			 ON CONFLICT (company_id, role, menu_key) DO NOTHING`,
+		`INSERT INTO role_menu_permissions (company_id, role, menu_key, level)
+			 SELECT (SELECT id FROM companies ORDER BY created_at LIMIT 1), r.role, m.menu_key, r.level FROM
 			 (VALUES ('superadmin','edit'),('admin','edit'),('finance','none'),('hr','none'),('warehouse','none'),
 			         ('sales','none'),('purchasing','none'),('operator','none'),('manager','none'),('viewer','none')) AS r(role, level)
 			 CROSS JOIN (VALUES ('settings.company'),('settings.users'),('settings.roles'),('settings.logs'),
 			                     ('settings.currency'),('settings.notifications'),('settings.2fa'),
-			                     ('settings.sessions'),('settings.audit'),('settings.security')) AS m(menu_key)
-			 ON CONFLICT (role, menu_key) DO NOTHING`,
-		`INSERT INTO role_menu_permissions (role, menu_key, level)
-			 SELECT r.role, m.menu_key, r.level FROM
+			                     ('settings.sessions'),('settings.audit'),('settings.security'),
+			                     ('settings.company_access')) AS m(menu_key)
+			 ON CONFLICT (company_id, role, menu_key) DO NOTHING`,
+		`INSERT INTO role_menu_permissions (company_id, role, menu_key, level)
+			 SELECT (SELECT id FROM companies ORDER BY created_at LIMIT 1), r.role, m.menu_key, r.level FROM
 			 (VALUES ('superadmin','edit'),('admin','edit'),('finance','view'),('hr','view'),('warehouse','view'),
 			         ('sales','view'),('purchasing','view'),('operator','edit'),('manager','view'),('viewer','view')) AS r(role, level)
 			 CROSS JOIN (VALUES ('network.devices'),('network.traffic'),('network.snmp')) AS m(menu_key)
-			 ON CONFLICT (role, menu_key) DO NOTHING`,
-		`INSERT INTO role_menu_permissions (role, menu_key, level)
-			 SELECT r.role, m.menu_key, r.level FROM
+			 ON CONFLICT (company_id, role, menu_key) DO NOTHING`,
+		`INSERT INTO role_menu_permissions (company_id, role, menu_key, level)
+			 SELECT (SELECT id FROM companies ORDER BY created_at LIMIT 1), r.role, m.menu_key, r.level FROM
 			 (VALUES ('superadmin','edit'),('admin','view'),('finance','view'),('hr','view'),('warehouse','view'),
 			         ('sales','view'),('purchasing','view'),('operator','view'),('manager','view'),('viewer','view')) AS r(role, level)
 			 CROSS JOIN (VALUES ('building.overview'),('building.hvac'),('building.energy')) AS m(menu_key)
-			 ON CONFLICT (role, menu_key) DO NOTHING`,
-		`INSERT INTO role_menu_permissions (role, menu_key, level)
-			 SELECT r.role, m.menu_key, r.level FROM
+			 ON CONFLICT (company_id, role, menu_key) DO NOTHING`,
+		`INSERT INTO role_menu_permissions (company_id, role, menu_key, level)
+			 SELECT (SELECT id FROM companies ORDER BY created_at LIMIT 1), r.role, m.menu_key, r.level FROM
 			 (VALUES ('superadmin','edit'),('admin','edit'),('finance','view'),('hr','view'),('warehouse','view'),
 			         ('sales','view'),('purchasing','view'),('operator','edit'),('manager','view'),('viewer','view')) AS r(role, level)
 			 CROSS JOIN (VALUES ('security.visitor'),('security.incident'),('security.access')) AS m(menu_key)
-			 ON CONFLICT (role, menu_key) DO NOTHING`,
-		`INSERT INTO role_menu_permissions (role, menu_key, level)
-			 SELECT r.role, m.menu_key, r.level FROM
+			 ON CONFLICT (company_id, role, menu_key) DO NOTHING`,
+		`INSERT INTO role_menu_permissions (company_id, role, menu_key, level)
+			 SELECT (SELECT id FROM companies ORDER BY created_at LIMIT 1), r.role, m.menu_key, r.level FROM
 			 (VALUES ('superadmin','edit'),('admin','edit'),('finance','view'),('hr','view'),('warehouse','edit'),
 			         ('sales','edit'),('purchasing','view'),('operator','view'),('manager','view'),('viewer','view')) AS r(role, level)
 			 CROSS JOIN (VALUES ('marketplace.overview'),('marketplace.channels'),('marketplace.orders'),('marketplace.listings')) AS m(menu_key)
-			 ON CONFLICT (role, menu_key) DO NOTHING`,
-		`INSERT INTO role_menu_permissions (role, menu_key, level)
-			 SELECT r.role, m.menu_key, r.level FROM
+			 ON CONFLICT (company_id, role, menu_key) DO NOTHING`,
+		`INSERT INTO role_menu_permissions (company_id, role, menu_key, level)
+			 SELECT (SELECT id FROM companies ORDER BY created_at LIMIT 1), r.role, m.menu_key, r.level FROM
 			 (VALUES ('superadmin','edit'),('admin','edit'),('finance','view'),('hr','view'),('warehouse','view'),
 			         ('sales','view'),('purchasing','view'),('operator','edit'),('manager','view'),('viewer','view')) AS r(role, level)
 			 CROSS JOIN (VALUES ('iot.live'),('iot.devices'),('iot.alerts'),('iot.history')) AS m(menu_key)
-			 ON CONFLICT (role, menu_key) DO NOTHING`,
+			 ON CONFLICT (company_id, role, menu_key) DO NOTHING`,
+		// Approval Center — pending/history previously had NO gate at all (any authenticated
+		// role could view+act), so every role gets 'edit' on pending and 'view' on history to
+		// avoid regressing existing access; rules config was already admin/superadmin-only via
+		// hasRole()+RoleRequired, so it stays that way here too.
+		`INSERT INTO role_menu_permissions (company_id, role, menu_key, level)
+			 SELECT (SELECT id FROM companies ORDER BY created_at LIMIT 1), r.role, m.menu_key, r.level FROM
+			 (VALUES ('superadmin','edit'),('admin','edit'),('finance','edit'),('hr','edit'),('warehouse','edit'),
+			         ('sales','edit'),('purchasing','edit'),('operator','edit'),('manager','edit'),('viewer','edit')) AS r(role, level)
+			 CROSS JOIN (VALUES ('approval.pending')) AS m(menu_key)
+			 ON CONFLICT (company_id, role, menu_key) DO NOTHING`,
+		`INSERT INTO role_menu_permissions (company_id, role, menu_key, level)
+			 SELECT (SELECT id FROM companies ORDER BY created_at LIMIT 1), r.role, m.menu_key, r.level FROM
+			 (VALUES ('superadmin','edit'),('admin','edit'),('finance','view'),('hr','view'),('warehouse','view'),
+			         ('sales','view'),('purchasing','view'),('operator','view'),('manager','view'),('viewer','view')) AS r(role, level)
+			 CROSS JOIN (VALUES ('approval.history')) AS m(menu_key)
+			 ON CONFLICT (company_id, role, menu_key) DO NOTHING`,
+		`INSERT INTO role_menu_permissions (company_id, role, menu_key, level)
+			 SELECT (SELECT id FROM companies ORDER BY created_at LIMIT 1), r.role, m.menu_key, r.level FROM
+			 (VALUES ('superadmin','edit'),('admin','edit'),('finance','none'),('hr','none'),('warehouse','none'),
+			         ('sales','none'),('purchasing','none'),('operator','none'),('manager','none'),('viewer','none')) AS r(role, level)
+			 CROSS JOIN (VALUES ('approval.rules')) AS m(menu_key)
+			 ON CONFLICT (company_id, role, menu_key) DO NOTHING`,
+		// Executive Dashboard — previously had NO gate at all (any authenticated role could
+		// view, 100% read-only, KPI target edit exists on backend but isn't wired up in the
+		// frontend UI at all) — give admin/superadmin 'edit' and everyone else 'view' uniformly
+		// across all 3 tabs to avoid regressing the previously-universal read access.
+		`INSERT INTO role_menu_permissions (company_id, role, menu_key, level)
+			 SELECT (SELECT id FROM companies ORDER BY created_at LIMIT 1), r.role, m.menu_key, r.level FROM
+			 (VALUES ('superadmin','edit'),('admin','edit'),('finance','view'),('hr','view'),('warehouse','view'),
+			         ('sales','view'),('purchasing','view'),('operator','view'),('manager','view'),('viewer','view')) AS r(role, level)
+			 CROSS JOIN (VALUES ('executive.overview'),('executive.report'),('executive.targets')) AS m(menu_key)
+			 ON CONFLICT (company_id, role, menu_key) DO NOTHING`,
+		// Integration (Import/Export/API Keys/Webhooks) — previously had NO gate at all (any
+		// authenticated role could create API keys, delete webhooks, run imports, etc.) — every
+		// role gets 'edit' uniformly across all 4 tabs to avoid regressing existing access; admin
+		// can later tighten this per-role via Settings now that it's DB-driven.
+		`INSERT INTO role_menu_permissions (company_id, role, menu_key, level)
+			 SELECT (SELECT id FROM companies ORDER BY created_at LIMIT 1), r.role, m.menu_key, r.level FROM
+			 (VALUES ('superadmin','edit'),('admin','edit'),('finance','edit'),('hr','edit'),('warehouse','edit'),
+			         ('sales','edit'),('purchasing','edit'),('operator','edit'),('manager','edit'),('viewer','edit')) AS r(role, level)
+			 CROSS JOIN (VALUES ('integration.import'),('integration.export'),('integration.apikeys'),('integration.webhooks')) AS m(menu_key)
+			 ON CONFLICT (company_id, role, menu_key) DO NOTHING`,
+		// Supply Chain Visibility & Traceability — 100% read-only (map/traceability/scorecard/
+		// risk dashboards, no create/edit/delete anywhere), previously had NO gate at all — every
+		// role gets 'view' uniformly across all 4 tabs to avoid regressing existing access.
+		`INSERT INTO role_menu_permissions (company_id, role, menu_key, level)
+			 SELECT (SELECT id FROM companies ORDER BY created_at LIMIT 1), r.role, m.menu_key, r.level FROM
+			 (VALUES ('superadmin','view'),('admin','view'),('finance','view'),('hr','view'),('warehouse','view'),
+			         ('sales','view'),('purchasing','view'),('operator','view'),('manager','view'),('viewer','view')) AS r(role, level)
+			 CROSS JOIN (VALUES ('supplychain.map'),('supplychain.trace'),('supplychain.scorecard'),('supplychain.risk')) AS m(menu_key)
+			 ON CONFLICT (company_id, role, menu_key) DO NOTHING`,
+		// Customer Portal — 100% read-only internal staff view of a customer's self-service
+		// data (dashboard/orders/invoices/deliveries), previously had NO gate at all — every
+		// role gets 'view' uniformly across all 4 tabs to avoid regressing existing access.
+		`INSERT INTO role_menu_permissions (company_id, role, menu_key, level)
+			 SELECT (SELECT id FROM companies ORDER BY created_at LIMIT 1), r.role, m.menu_key, r.level FROM
+			 (VALUES ('superadmin','view'),('admin','view'),('finance','view'),('hr','view'),('warehouse','view'),
+			         ('sales','view'),('purchasing','view'),('operator','view'),('manager','view'),('viewer','view')) AS r(role, level)
+			 CROSS JOIN (VALUES ('customerportal.dashboard'),('customerportal.orders'),('customerportal.invoices'),('customerportal.delivery')) AS m(menu_key)
+			 ON CONFLICT (company_id, role, menu_key) DO NOTHING`,
+		// Vendor Portal — internal staff view of a vendor's self-service data, with ONE real
+		// mutation ("Kirim Invoice" submits a vendor invoice on the vendor's behalf). Previously
+		// had NO gate at all — every role gets 'add' uniformly across all 4 tabs (not just
+		// 'view', since the invoice-submit action was universally usable before) to avoid
+		// regressing existing access.
+		`INSERT INTO role_menu_permissions (company_id, role, menu_key, level)
+			 SELECT (SELECT id FROM companies ORDER BY created_at LIMIT 1), r.role, m.menu_key, r.level FROM
+			 (VALUES ('superadmin','add'),('admin','add'),('finance','add'),('hr','add'),('warehouse','add'),
+			         ('sales','add'),('purchasing','add'),('operator','add'),('manager','add'),('viewer','add')) AS r(role, level)
+			 CROSS JOIN (VALUES ('vendorportal.dashboard'),('vendorportal.pos'),('vendorportal.invoices'),('vendorportal.payments')) AS m(menu_key)
+			 ON CONFLICT (company_id, role, menu_key) DO NOTHING`,
 		// Security
 		`CREATE TABLE IF NOT EXISTS visitors (
 			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -1342,7 +1455,7 @@ func seedAdmin() {
 		return
 	}
 	var companyID string
-	DB.QueryRow(`INSERT INTO companies (name, email) VALUES ('PT. Smart Enterprise Indonesia', 'info@sep.id') RETURNING id`).Scan(&companyID)
+	DB.QueryRow(`SELECT id FROM companies ORDER BY created_at LIMIT 1`).Scan(&companyID)
 	// Password: admin123 (bcrypt)
 	DB.Exec(`INSERT INTO users (company_id, name, email, password, role) VALUES ($1, 'Admin Sistem', 'admin@sep.id', '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy', 'superadmin')`, companyID)
 	log.Println("Default admin created: admin@sep.id / admin123")

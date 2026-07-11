@@ -1,11 +1,13 @@
 import { useState, useEffect, useCallback } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
 import { portalApi } from '@/api'
+import { useAuthStore } from '@/store/authStore'
 import DataTable from '@/components/ui/DataTable'
 import Modal from '@/components/ui/Modal'
 import Input from '@/components/ui/Input'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card'
 import {
-  ClipboardList, FileText, CreditCard, LayoutDashboard, TrendingUp,
+  ClipboardList, FileText, CreditCard, TrendingUp,
   Clock, CheckCircle, Building2, ChevronDown, Phone, Mail, Plus,
   Package, AlertCircle, DollarSign, Send
 } from 'lucide-react'
@@ -37,17 +39,19 @@ function Badge({ status }) {
   )
 }
 
-const TABS = [
-  { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { id: 'pos',       label: 'Purchase Order', icon: ClipboardList },
-  { id: 'invoices',  label: 'Invoice Saya', icon: FileText },
-  { id: 'payments',  label: 'Pembayaran', icon: CreditCard },
-]
+const VALID_TABS = ['dashboard', 'pos', 'invoices', 'payments']
 
 const DEFAULT_INVOICE = { po_ref: '', amount: '', description: '' }
 
 export default function VendorPortal() {
-  const [activeTab, setActiveTab] = useState('dashboard')
+  const { canDo } = useAuthStore()
+  const canSubmitInvoice = canDo('vendorportal.invoices', 'add')
+  const navigate = useNavigate()
+  const { tab } = useParams()
+  const activeTab = VALID_TABS.includes(tab) ? tab : 'dashboard'
+  useEffect(() => {
+    if (!VALID_TABS.includes(tab)) navigate('/portal/vendor/dashboard', { replace: true })
+  }, [tab])
   const [vendors, setVendors] = useState([])
   const [selectedVendor, setSelectedVendor] = useState(null)
   const [showDropdown, setShowDropdown] = useState(false)
@@ -107,11 +111,13 @@ export default function VendorPortal() {
         </div>
         <div className="flex items-center gap-3">
           {/* Submit Invoice button */}
-          <button onClick={() => setShowInvoiceModal(true)}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium transition-all shadow-md shadow-indigo-200">
-            <Plus className="w-4 h-4" />
-            Kirim Invoice
-          </button>
+          {canSubmitInvoice && (
+            <button onClick={() => setShowInvoiceModal(true)}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium transition-all shadow-md shadow-indigo-200">
+              <Plus className="w-4 h-4" />
+              Kirim Invoice
+            </button>
+          )}
           {/* Vendor switcher */}
           <div className="relative">
             <button
@@ -161,24 +167,6 @@ export default function VendorPortal() {
           </div>
         </div>
       )}
-
-      {/* Tabs */}
-      <div className="flex gap-1 p-1 rounded-xl" style={{ backgroundColor: 'var(--bg-surface-3)' }}>
-        {TABS.map(t => {
-          const Icon = t.icon
-          return (
-            <button key={t.id} onClick={() => setActiveTab(t.id)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                activeTab === t.id
-                  ? 'bg-white text-emerald-600 shadow-sm'
-                  : 'text-slate-500 hover:text-slate-700'
-              }`}>
-              <Icon className="w-4 h-4" />
-              {t.label}
-            </button>
-          )
-        })}
-      </div>
 
       {/* Dashboard */}
       {activeTab === 'dashboard' && (
@@ -298,13 +286,13 @@ export default function VendorPortal() {
             { key: 'status', label: 'Status', render: v => <Badge status={v} /> },
           ]}
           searchable
-          toolbar={
+          toolbar={canSubmitInvoice && (
             <button onClick={() => setShowInvoiceModal(true)}
               className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium transition-all">
               <Plus className="w-3.5 h-3.5" />
               Kirim Invoice
             </button>
-          }
+          )}
         />
       )}
 

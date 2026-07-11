@@ -10,6 +10,8 @@ const api = axios.create({
 api.interceptors.request.use((config) => {
   const token = useAuthStore.getState().token
   if (token) config.headers.Authorization = `Bearer ${token}`
+  const companyFilter = useAuthStore.getState().companyFilter
+  if (companyFilter?.id) config.params = { ...config.params, company_id: companyFilter.id }
   return config
 })
 

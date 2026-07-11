@@ -10,9 +10,23 @@ import {
 } from 'lucide-react'
 
 const navItems = [
-  { path: '/executive', label: 'Executive', icon: Crown, badge: 'CEO' },
+  {
+    path: '/executive', label: 'Executive', icon: Crown, badge: 'CEO', permission: 'executive.view',
+    children: [
+      { path: '/executive/overview', label: 'Overview', menuKey: 'executive.overview' },
+      { path: '/executive/report', label: 'Management Report', menuKey: 'executive.report' },
+      { path: '/executive/targets', label: 'Target KPI', menuKey: 'executive.targets' },
+    ],
+  },
   { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { path: '/approval', label: 'Approval Center', icon: CheckSquare, badge: 'NEW' },
+  {
+    path: '/approval', label: 'Approval Center', icon: CheckSquare, badge: 'NEW', permission: 'approval.view',
+    children: [
+      { path: '/approval/pending', label: 'Menunggu Persetujuan', menuKey: 'approval.pending' },
+      { path: '/approval/history', label: 'Riwayat', menuKey: 'approval.history' },
+      { path: '/approval/rules', label: 'Konfigurasi Rule', menuKey: 'approval.rules' },
+    ],
+  },
   { path: '/ai', label: 'AI Assistant', icon: Bot, badge: 'AI' },
   { divider: true, label: 'Operasional' },
   {
@@ -151,7 +165,15 @@ const navItems = [
       { path: '/cost/centers', label: 'Cost Center', menuKey: 'cost.centers' },
       { path: '/cost/wo', label: 'Biaya WO', menuKey: 'cost.wo' },
       { path: '/cost/std', label: 'Standard Cost', menuKey: 'cost.std' },
-      { path: '/cost/laporan', label: 'Laporan & Analisis', menuKey: 'cost.laporan' },
+      {
+        path: '/cost/laporan', label: 'Laporan & Analisis',
+        children: [
+          { path: '/cost/laporan', label: 'Analisis Varians', menuKey: 'cost.laporan' },
+          { path: '/cost/cogs', label: 'COGS Report', menuKey: 'cost.cogs' },
+          { path: '/cost/profitability', label: 'Profitabilitas Produk', menuKey: 'cost.profitability' },
+          { path: '/cost/center-report', label: 'Cost Center Report', menuKey: 'cost.centerreport' },
+        ],
+      },
     ],
   },
   {
@@ -180,7 +202,15 @@ const navItems = [
     ],
   },
   { path: '/print', label: 'Print Center', icon: Printer, badge: 'PDF' },
-  { path: '/integration', label: 'Integrasi & API', icon: Plug2, badge: 'API' },
+  {
+    path: '/integration', label: 'Integrasi & API', icon: Plug2, badge: 'API', permission: 'integration.view',
+    children: [
+      { path: '/integration/import', label: 'Import Data', menuKey: 'integration.import' },
+      { path: '/integration/export', label: 'Export Data', menuKey: 'integration.export' },
+      { path: '/integration/api-keys', label: 'API Keys', menuKey: 'integration.apikeys' },
+      { path: '/integration/webhooks', label: 'Webhooks', menuKey: 'integration.webhooks' },
+    ],
+  },
   { divider: true, label: 'Infrastruktur' },
   {
     path: '/network', label: 'Network NOC', icon: Network, permission: 'network.view',
@@ -234,10 +264,34 @@ const navItems = [
       { path: '/iot-hub/history', label: 'Riwayat Alert', menuKey: 'iot.history' },
     ],
   },
-  { path: '/supply-chain', label: 'Supply Chain', icon: GitMerge, badge: 'NEW' },
+  {
+    path: '/supply-chain', label: 'Supply Chain', icon: GitMerge, badge: 'NEW', permission: 'supplychain.view',
+    children: [
+      { path: '/supply-chain/map', label: 'Peta Rantai Pasok', menuKey: 'supplychain.map' },
+      { path: '/supply-chain/trace', label: 'Traceability', menuKey: 'supplychain.trace' },
+      { path: '/supply-chain/scorecard', label: 'Supplier Scorecard', menuKey: 'supplychain.scorecard' },
+      { path: '/supply-chain/risk', label: 'Risk Dashboard', menuKey: 'supplychain.risk' },
+    ],
+  },
   { divider: true, label: 'Portal Eksternal' },
-  { path: '/portal/customer', label: 'Customer Portal', icon: Store, badge: 'NEW' },
-  { path: '/portal/vendor', label: 'Vendor Portal', icon: Building2, badge: 'NEW' },
+  {
+    path: '/portal/customer', label: 'Customer Portal', icon: Store, badge: 'NEW', permission: 'customerportal.view',
+    children: [
+      { path: '/portal/customer/dashboard', label: 'Dashboard', menuKey: 'customerportal.dashboard' },
+      { path: '/portal/customer/orders', label: 'Pesanan Saya', menuKey: 'customerportal.orders' },
+      { path: '/portal/customer/invoices', label: 'Invoice', menuKey: 'customerportal.invoices' },
+      { path: '/portal/customer/delivery', label: 'Pengiriman', menuKey: 'customerportal.delivery' },
+    ],
+  },
+  {
+    path: '/portal/vendor', label: 'Vendor Portal', icon: Building2, badge: 'NEW', permission: 'vendorportal.view',
+    children: [
+      { path: '/portal/vendor/dashboard', label: 'Dashboard', menuKey: 'vendorportal.dashboard' },
+      { path: '/portal/vendor/pos', label: 'Purchase Order', menuKey: 'vendorportal.pos' },
+      { path: '/portal/vendor/invoices', label: 'Invoice Saya', menuKey: 'vendorportal.invoices' },
+      { path: '/portal/vendor/payments', label: 'Pembayaran', menuKey: 'vendorportal.payments' },
+    ],
+  },
   { divider: true, label: '' },
   { path: '/documents', label: 'Dokumen', icon: FolderOpen },
   {
@@ -245,6 +299,7 @@ const navItems = [
     children: [
       { path: '/settings/company', label: 'Perusahaan', menuKey: 'settings.company' },
       { path: '/settings/users', label: 'Users', menuKey: 'settings.users' },
+      { path: '/settings/company-access', label: 'Akses Perusahaan', menuKey: 'settings.company_access' },
       { path: '/settings/roles', label: 'Role & Permission', menuKey: 'settings.roles' },
       { path: '/settings/logs', label: 'Akses Log', menuKey: 'settings.logs' },
       { path: '/settings/currency', label: 'Mata Uang', menuKey: 'settings.currency' },
@@ -265,6 +320,50 @@ const roleColors = {
   finance: 'from-amber-500 to-orange-500',
 }
 
+// One level deeper than a normal submenu item — e.g. Cost Accounting >
+// "Laporan & Analisis" > (Analisis Varians / COGS / Profitabilitas / Cost
+// Center Report). Shares the parent Sidebar's `expanded` Set/toggleExpanded
+// (paths are globally unique, so one Set safely tracks both nesting levels).
+function NestedSubmenu({ child, expanded, toggleExpanded }) {
+  const location = useLocation()
+  const isOpen = expanded.has(child.path)
+  const isActive = child.children.some(gc => location.pathname.startsWith(gc.path))
+
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => toggleExpanded(child.path)}
+        className={cn(
+          'w-full flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[13px] font-medium transition-all duration-150',
+          isActive ? 'text-indigo-300' : 'text-slate-500 hover:text-slate-200 hover:bg-white/[0.05]'
+        )}
+      >
+        <span className="truncate flex-1 text-left">{child.label}</span>
+        <ChevronDown className={cn('w-3 h-3 flex-shrink-0 transition-transform', isOpen && 'rotate-180')} />
+      </button>
+      {isOpen && (
+        <div className="mt-0.5 ml-3 pl-2.5 border-l border-white/[0.08] space-y-0.5">
+          {child.children.map(gc => (
+            <NavLink
+              key={gc.path}
+              to={gc.path}
+              className={({ isActive }) => cn(
+                'block px-2.5 py-1 rounded-lg text-[12px] font-medium truncate transition-all duration-150',
+                isActive
+                  ? 'text-indigo-300 bg-indigo-500/10'
+                  : 'text-slate-500 hover:text-slate-200 hover:bg-white/[0.05]'
+              )}
+            >
+              {gc.label}
+            </NavLink>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function Sidebar() {
   const { sidebarCollapsed, collapseSidebar } = useUIStore()
   const { user, hasPermission, canDo } = useAuthStore()
@@ -272,10 +371,24 @@ export default function Sidebar() {
   const gradient = roleColors[user?.role] || roleColors.admin
   const [expanded, setExpanded] = useState(() => new Set())
 
-  // Auto-expand the parent of whichever submenu route is currently active
+  // Auto-expand the parent (and, for a nested submenu, the grandparent too) of
+  // whichever submenu route is currently active.
   useEffect(() => {
-    const parent = navItems.find(i => i.children?.some(c => location.pathname.startsWith(c.path)))
-    if (parent) setExpanded(prev => new Set(prev).add(parent.path))
+    const toExpand = new Set()
+    for (const item of navItems) {
+      if (!item.children) continue
+      for (const child of item.children) {
+        if (child.children?.length) {
+          if (child.children.some(gc => location.pathname.startsWith(gc.path))) {
+            toExpand.add(item.path)
+            toExpand.add(child.path)
+          }
+        } else if (location.pathname.startsWith(child.path)) {
+          toExpand.add(item.path)
+        }
+      }
+    }
+    if (toExpand.size) setExpanded(prev => new Set([...prev, ...toExpand]))
   }, [location.pathname])
 
   const toggleExpanded = (path) => {
@@ -297,7 +410,15 @@ export default function Sidebar() {
       }
       if (item.permission && !hasPermission(item.permission)) continue
       if (item.children?.length) {
-        const visibleChildren = item.children.filter(c => !c.menuKey || canDo(c.menuKey, 'view'))
+        const visibleChildren = item.children
+          .map(c => {
+            if (c.children?.length) {
+              const visibleGrandchildren = c.children.filter(gc => !gc.menuKey || canDo(gc.menuKey, 'view'))
+              return visibleGrandchildren.length ? { ...c, children: visibleGrandchildren } : null
+            }
+            return (!c.menuKey || canDo(c.menuKey, 'view')) ? c : null
+          })
+          .filter(Boolean)
         if (!visibleChildren.length) continue
         if (pendingDivider) { result.push(pendingDivider); pendingDivider = null }
         result.push({ ...item, children: visibleChildren })
@@ -362,13 +483,17 @@ export default function Sidebar() {
 
           if (item.children?.length) {
             const isOpen = expanded.has(item.path) && !sidebarCollapsed
-            const isChildActive = item.children.some(c => location.pathname.startsWith(c.path))
+            const isChildActive = item.children.some(c =>
+              c.children?.length
+                ? c.children.some(gc => location.pathname.startsWith(gc.path))
+                : location.pathname.startsWith(c.path)
+            )
 
             if (sidebarCollapsed) {
               return (
                 <NavLink
                   key={item.path}
-                  to={item.children[0].path}
+                  to={item.children[0].children?.[0]?.path || item.children[0].path}
                   title={item.label}
                   className={cn(
                     'group relative flex items-center justify-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-all duration-150',
@@ -412,18 +537,22 @@ export default function Sidebar() {
                 {isOpen && (
                   <div className="mt-0.5 ml-6 pl-2.5 border-l border-white/[0.08] space-y-0.5">
                     {item.children.map(child => (
-                      <NavLink
-                        key={child.path}
-                        to={child.path}
-                        className={({ isActive }) => cn(
-                          'block px-2.5 py-1.5 rounded-lg text-[13px] font-medium truncate transition-all duration-150',
-                          isActive
-                            ? 'text-indigo-300 bg-indigo-500/10'
-                            : 'text-slate-500 hover:text-slate-200 hover:bg-white/[0.05]'
-                        )}
-                      >
-                        {child.label}
-                      </NavLink>
+                      child.children?.length ? (
+                        <NestedSubmenu key={child.path} child={child} expanded={expanded} toggleExpanded={toggleExpanded} />
+                      ) : (
+                        <NavLink
+                          key={child.path}
+                          to={child.path}
+                          className={({ isActive }) => cn(
+                            'block px-2.5 py-1.5 rounded-lg text-[13px] font-medium truncate transition-all duration-150',
+                            isActive
+                              ? 'text-indigo-300 bg-indigo-500/10'
+                              : 'text-slate-500 hover:text-slate-200 hover:bg-white/[0.05]'
+                          )}
+                        >
+                          {child.label}
+                        </NavLink>
+                      )
                     ))}
                   </div>
                 )}

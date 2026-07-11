@@ -30,6 +30,7 @@ func Setup(r *gin.Engine, jwtSecret string) {
 	// Protected routes
 	protected := v1.Group("")
 	protected.Use(middleware.AuthMiddleware(jwtSecret))
+	protected.Use(middleware.CompanyFilter())
 	{
 		// Shorthand for per-menu permission gating (view/add/edit/delete tiers)
 		mp := middleware.MenuPermission
@@ -37,6 +38,7 @@ func Setup(r *gin.Engine, jwtSecret string) {
 		protected.POST("/auth/logout", handlers.Logout)
 		protected.GET("/auth/me", handlers.Me)
 		protected.PUT("/auth/password", handlers.ChangePassword)
+		protected.POST("/auth/switch-company", handlers.SwitchCompany)
 
 		// RBAC & User Management (Phase 19)
 		protected.GET("/rbac/users", mp("settings.users", "view"), handlers.GetUsers)
@@ -47,6 +49,9 @@ func Setup(r *gin.Engine, jwtSecret string) {
 		protected.GET("/rbac/access-logs", mp("settings.logs", "view"), handlers.GetAccessLogs)
 		protected.GET("/rbac/companies", mp("settings.company", "view"), handlers.GetCompanies)
 		protected.POST("/rbac/companies", mp("settings.company", "add"), handlers.CreateCompany)
+		protected.GET("/rbac/users/:id/companies", mp("settings.users", "view"), handlers.GetUserCompanies)
+		protected.POST("/rbac/users/:id/companies", mp("settings.users", "edit"), handlers.UpdateUserCompanies)
+		protected.GET("/rbac/company-access-matrix", mp("settings.company_access", "view"), handlers.GetCompanyAccessMatrix)
 		// NOTE: /rbac/menu-permissions GET is NOT gated by mp() — every authenticated user of
 		// any role fetches their own menu permissions here on app load (authStore.loadMenuPermissions),
 		// so this must stay open to all roles, not just settings.roles-tiered ones.
@@ -275,9 +280,12 @@ func Setup(r *gin.Engine, jwtSecret string) {
 			protected.POST("/cost/standard-costs", mp("cost.std", "add"), handlers.UpsertStandardCost)
 			protected.DELETE("/cost/standard-costs/:id", mp("cost.std", "delete"), handlers.DeleteStandardCost)
 			protected.GET("/cost/variance", mp("cost.laporan", "view"), handlers.GetCostVariance)
-			protected.GET("/cost/cogs", mp("cost.laporan", "view"), handlers.GetCOGSReport)
-			protected.GET("/cost/profitability", mp("cost.laporan", "view"), handlers.GetProfitabilityReport)
-			protected.GET("/cost/center-report", mp("cost.laporan", "view"), handlers.GetCostCenterReport)
+			protected.GET("/cost/cogs", mp("cost.cogs", "view"), handlers.GetCOGSReport)
+			protected.GET("/cost/profitability", mp("cost.profitability", "view"), handlers.GetProfitabilityReport)
+			protected.GET("/cost/center-report", mp("cost.centerreport", "view"), handlers.GetCostCenterReport)
+			// /cost/summary backs the shared KPI header on all 4 report tabs above — gated
+			// to the broadest ("laporan") tier so it doesn't block whichever specific report
+			// tab a role does have access to; the report itself still enforces its own key.
 			protected.GET("/cost/summary", mp("cost.laporan", "view"), handlers.GetCostSummary)
 
 			// Tax & Compliance (Phase 12) — gated per-menu (view/add/edit tiers); delete is superadmin-only
@@ -314,33 +322,35 @@ func Setup(r *gin.Engine, jwtSecret string) {
 		protected.PUT("/budget/scenarios/:id", mp("budget.scenarios", "edit"), handlers.UpdateBudgetScenario)
 		protected.DELETE("/budget/scenarios/:id", mp("budget.scenarios", "delete"), handlers.DeleteBudgetScenario)
 
-		// Approval Workflow Engine
-		protected.GET("/approvals/pending", handlers.GetMyApprovals)
-		protected.GET("/approvals/history", handlers.GetApprovalHistory)
-		protected.GET("/approvals/:id", handlers.GetApprovalRequest)
-		protected.PATCH("/approvals/:id/action", handlers.ActOnApproval)
-		protected.GET("/approvals/rules", middleware.RoleRequired("superadmin", "admin"), handlers.GetApprovalRules)
-		protected.POST("/approvals/rules", middleware.RoleRequired("superadmin", "admin"), handlers.CreateApprovalRule)
-		protected.PUT("/approvals/rules/:id", middleware.RoleRequired("superadmin", "admin"), handlers.UpdateApprovalRule)
-		protected.DELETE("/approvals/rules/:id", middleware.RoleRequired("superadmin", "admin"), handlers.DeleteApprovalRule)
+		// Approval Workflow Engine — gated per-menu (view/edit tiers); rules also stay
+		// role-restricted (RoleRequired) alongside the new menu-tier gate, same two-layer
+		// pattern used for the Accounting sub-group since Phase 45.
+		protected.GET("/approvals/pending", mp("approval.pending", "view"), handlers.GetMyApprovals)
+		protected.GET("/approvals/history", mp("approval.history", "view"), handlers.GetApprovalHistory)
+		protected.GET("/approvals/:id", mp("approval.pending", "view"), handlers.GetApprovalRequest)
+		protected.PATCH("/approvals/:id/action", mp("approval.pending", "edit"), handlers.ActOnApproval)
+		protected.GET("/approvals/rules", middleware.RoleRequired("superadmin", "admin"), mp("approval.rules", "view"), handlers.GetApprovalRules)
+		protected.POST("/approvals/rules", middleware.RoleRequired("superadmin", "admin"), mp("approval.rules", "add"), handlers.CreateApprovalRule)
+		protected.PUT("/approvals/rules/:id", middleware.RoleRequired("superadmin", "admin"), mp("approval.rules", "edit"), handlers.UpdateApprovalRule)
+		protected.DELETE("/approvals/rules/:id", middleware.RoleRequired("superadmin", "admin"), mp("approval.rules", "delete"), handlers.DeleteApprovalRule)
 
 		// Import / Export & API Publik (Phase 29)
-		protected.GET("/integration/import/templates", handlers.GetImportTemplates)
-		protected.GET("/integration/import/templates/:type/download", handlers.DownloadTemplate)
-		protected.POST("/integration/import/preview", handlers.PreviewImport)
-		protected.POST("/integration/import/execute", handlers.ExecuteImport)
-		protected.GET("/integration/import/history", handlers.GetImportHistory)
-		protected.GET("/integration/export/:type", handlers.ExportData)
-		protected.GET("/integration/api-keys", handlers.GetAPIKeys)
-		protected.POST("/integration/api-keys", handlers.CreateAPIKey)
-		protected.DELETE("/integration/api-keys/:id", handlers.RevokeAPIKey)
-		protected.GET("/integration/api-keys/logs", handlers.GetAPIUsageLogs)
-		protected.GET("/integration/webhooks", handlers.GetWebhooks)
-		protected.POST("/integration/webhooks", handlers.CreateWebhook)
-		protected.PUT("/integration/webhooks/:id", handlers.UpdateWebhook)
-		protected.DELETE("/integration/webhooks/:id", handlers.DeleteWebhook)
-		protected.GET("/integration/webhooks/:id/logs", handlers.GetWebhookLogs)
-		protected.GET("/integration/webhook-events", handlers.GetWebhookEvents)
+		protected.GET("/integration/import/templates", mp("integration.import", "view"), handlers.GetImportTemplates)
+		protected.GET("/integration/import/templates/:type/download", mp("integration.import", "view"), handlers.DownloadTemplate)
+		protected.POST("/integration/import/preview", mp("integration.import", "view"), handlers.PreviewImport)
+		protected.POST("/integration/import/execute", mp("integration.import", "add"), handlers.ExecuteImport)
+		protected.GET("/integration/import/history", mp("integration.import", "view"), handlers.GetImportHistory)
+		protected.GET("/integration/export/:type", mp("integration.export", "view"), handlers.ExportData)
+		protected.GET("/integration/api-keys", mp("integration.apikeys", "view"), handlers.GetAPIKeys)
+		protected.POST("/integration/api-keys", mp("integration.apikeys", "add"), handlers.CreateAPIKey)
+		protected.DELETE("/integration/api-keys/:id", mp("integration.apikeys", "delete"), handlers.RevokeAPIKey)
+		protected.GET("/integration/api-keys/logs", mp("integration.apikeys", "view"), handlers.GetAPIUsageLogs)
+		protected.GET("/integration/webhooks", mp("integration.webhooks", "view"), handlers.GetWebhooks)
+		protected.POST("/integration/webhooks", mp("integration.webhooks", "add"), handlers.CreateWebhook)
+		protected.PUT("/integration/webhooks/:id", mp("integration.webhooks", "edit"), handlers.UpdateWebhook)
+		protected.DELETE("/integration/webhooks/:id", mp("integration.webhooks", "delete"), handlers.DeleteWebhook)
+		protected.GET("/integration/webhooks/:id/logs", mp("integration.webhooks", "view"), handlers.GetWebhookLogs)
+		protected.GET("/integration/webhook-events", mp("integration.webhooks", "view"), handlers.GetWebhookEvents)
 
 		// Coretax DJP & e-Faktur (Phase 28) — gated per-menu (view/add/edit tiers)
 		protected.GET("/tax/nsfp", mp("tax.nsfp", "view"), handlers.GetNSFP)
@@ -493,17 +503,17 @@ func Setup(r *gin.Engine, jwtSecret string) {
 		protected.PUT("/security/policy", mp("settings.security", "edit"), handlers.UpdateSecurityPolicy)
 
 		// Customer & Vendor Portal (Phase 34)
-		protected.GET("/portal/customers", handlers.GetPortalCustomers)
-		protected.GET("/portal/vendors", handlers.GetPortalVendors)
-		protected.GET("/portal/customer/dashboard", handlers.GetCustomerPortalDashboard)
-		protected.GET("/portal/customer/orders", handlers.GetCustomerPortalOrders)
-		protected.GET("/portal/customer/invoices", handlers.GetCustomerPortalInvoices)
-		protected.GET("/portal/customer/deliveries", handlers.GetCustomerPortalDeliveries)
-		protected.GET("/portal/vendor/dashboard", handlers.GetVendorPortalDashboard)
-		protected.GET("/portal/vendor/pos", handlers.GetVendorPortalPOs)
-		protected.GET("/portal/vendor/invoices", handlers.GetVendorPortalInvoices)
-		protected.POST("/portal/vendor/invoices", handlers.CreatePortalVendorInvoice)
-		protected.GET("/portal/vendor/payments", handlers.GetVendorPortalPayments)
+		protected.GET("/portal/customers", mp("customerportal.dashboard", "view"), handlers.GetPortalCustomers)
+		protected.GET("/portal/vendors", mp("vendorportal.dashboard", "view"), handlers.GetPortalVendors)
+		protected.GET("/portal/customer/dashboard", mp("customerportal.dashboard", "view"), handlers.GetCustomerPortalDashboard)
+		protected.GET("/portal/customer/orders", mp("customerportal.orders", "view"), handlers.GetCustomerPortalOrders)
+		protected.GET("/portal/customer/invoices", mp("customerportal.invoices", "view"), handlers.GetCustomerPortalInvoices)
+		protected.GET("/portal/customer/deliveries", mp("customerportal.delivery", "view"), handlers.GetCustomerPortalDeliveries)
+		protected.GET("/portal/vendor/dashboard", mp("vendorportal.dashboard", "view"), handlers.GetVendorPortalDashboard)
+		protected.GET("/portal/vendor/pos", mp("vendorportal.pos", "view"), handlers.GetVendorPortalPOs)
+		protected.GET("/portal/vendor/invoices", mp("vendorportal.invoices", "view"), handlers.GetVendorPortalInvoices)
+		protected.POST("/portal/vendor/invoices", mp("vendorportal.invoices", "add"), handlers.CreatePortalVendorInvoice)
+		protected.GET("/portal/vendor/payments", mp("vendorportal.payments", "view"), handlers.GetVendorPortalPayments)
 
 		// Marketplace & IoT Hub (Phase 35)
 		protected.GET("/marketplace/summary", mp("marketplace.overview", "view"), handlers.GetMarketplaceSummary)
@@ -524,15 +534,15 @@ func Setup(r *gin.Engine, jwtSecret string) {
 		protected.GET("/iot/alert-history", mp("iot.history", "view"), handlers.GetIoTAlertHistory)
 
 		// Supply Chain Visibility & Traceability (Phase 36)
-		protected.GET("/supply-chain/map", handlers.GetSupplyChainMap)
-		protected.GET("/supply-chain/traceability", handlers.GetProductTraceability)
-		protected.GET("/supply-chain/supplier-scorecard", handlers.GetSupplierScorecard)
-		protected.GET("/supply-chain/risk", handlers.GetSupplyChainRisk)
+		protected.GET("/supply-chain/map", mp("supplychain.map", "view"), handlers.GetSupplyChainMap)
+		protected.GET("/supply-chain/traceability", mp("supplychain.trace", "view"), handlers.GetProductTraceability)
+		protected.GET("/supply-chain/supplier-scorecard", mp("supplychain.scorecard", "view"), handlers.GetSupplierScorecard)
+		protected.GET("/supply-chain/risk", mp("supplychain.risk", "view"), handlers.GetSupplyChainRisk)
 
-		// Executive Dashboard & Management Reporting (Phase 37)
-		protected.GET("/executive/dashboard", handlers.GetExecutiveDashboard)
-		protected.GET("/executive/kpi-targets", handlers.GetKPITargets)
-		protected.PUT("/executive/kpi-targets", handlers.UpdateKPITargets)
-		protected.GET("/executive/management-report", handlers.GetManagementReport)
+		// Executive Dashboard & Management Reporting (Phase 37) — gated per-menu (view/edit tiers)
+		protected.GET("/executive/dashboard", mp("executive.overview", "view"), handlers.GetExecutiveDashboard)
+		protected.GET("/executive/kpi-targets", mp("executive.targets", "view"), handlers.GetKPITargets)
+		protected.PUT("/executive/kpi-targets", mp("executive.targets", "edit"), handlers.UpdateKPITargets)
+		protected.GET("/executive/management-report", mp("executive.report", "view"), handlers.GetManagementReport)
 	}
 }

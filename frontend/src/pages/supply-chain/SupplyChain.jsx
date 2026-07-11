@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
 import { supplyChainApi } from '@/api'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card'
 import Input from '@/components/ui/Input'
@@ -14,12 +15,7 @@ import {
 
 const fmt = (n) => 'Rp ' + Number(n).toLocaleString('id-ID')
 
-const TABS = [
-  { id: 'map',       label: 'Peta Rantai Pasok', icon: GitMerge },
-  { id: 'trace',     label: 'Traceability', icon: Search },
-  { id: 'scorecard', label: 'Supplier Scorecard', icon: Award },
-  { id: 'risk',      label: 'Risk Dashboard', icon: AlertTriangle },
-]
+const VALID_TABS = ['map', 'trace', 'scorecard', 'risk']
 
 const NODE_STYLES = {
   supplier:   { bg: 'bg-indigo-100 border-indigo-300', icon: Package,   color: 'text-indigo-700', badge: 'bg-indigo-500' },
@@ -53,7 +49,12 @@ const RISK_SEV_COLORS = {
 }
 
 export default function SupplyChain() {
-  const [activeTab, setActiveTab] = useState('map')
+  const navigate = useNavigate()
+  const { tab } = useParams()
+  const activeTab = VALID_TABS.includes(tab) ? tab : 'map'
+  useEffect(() => {
+    if (!VALID_TABS.includes(tab)) navigate('/supply-chain/map', { replace: true })
+  }, [tab])
   const [mapData, setMapData] = useState(null)
   const [traceData, setTraceData] = useState(null)
   const [scorecardData, setScorecardData] = useState(null)
@@ -101,21 +102,6 @@ export default function SupplyChain() {
       <div>
         <h1 className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>Supply Chain</h1>
         <p className="text-sm mt-0.5" style={{ color: 'var(--text-muted)' }}>Visibilitas & traceability rantai pasok end-to-end</p>
-      </div>
-
-      {/* Tabs */}
-      <div className="flex gap-1 p-1 rounded-xl" style={{ backgroundColor: 'var(--bg-surface-3)' }}>
-        {TABS.map(t => {
-          const Icon = t.icon
-          return (
-            <button key={t.id} onClick={() => setActiveTab(t.id)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                activeTab === t.id ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'
-              }`}>
-              <Icon className="w-4 h-4" />{t.label}
-            </button>
-          )
-        })}
       </div>
 
       {/* Supply Chain Map */}

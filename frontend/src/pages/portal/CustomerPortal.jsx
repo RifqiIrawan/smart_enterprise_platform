@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
 import { portalApi } from '@/api'
 import DataTable from '@/components/ui/DataTable'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card'
 import {
-  ShoppingCart, FileText, Truck, LayoutDashboard, TrendingUp,
+  ShoppingCart, FileText, Truck, TrendingUp,
   Clock, CheckCircle, AlertCircle, Package, ChevronDown, RefreshCw,
   Building2, Phone, Mail
 } from 'lucide-react'
@@ -39,15 +40,15 @@ function Badge({ status }) {
   )
 }
 
-const TABS = [
-  { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { id: 'orders',    label: 'Pesanan Saya', icon: ShoppingCart },
-  { id: 'invoices',  label: 'Invoice', icon: FileText },
-  { id: 'delivery',  label: 'Pengiriman', icon: Truck },
-]
+const VALID_TABS = ['dashboard', 'orders', 'invoices', 'delivery']
 
 export default function CustomerPortal() {
-  const [activeTab, setActiveTab] = useState('dashboard')
+  const navigate = useNavigate()
+  const { tab } = useParams()
+  const activeTab = VALID_TABS.includes(tab) ? tab : 'dashboard'
+  useEffect(() => {
+    if (!VALID_TABS.includes(tab)) navigate('/portal/customer/dashboard', { replace: true })
+  }, [tab])
   const [customers, setCustomers] = useState([])
   const [selectedCustomer, setSelectedCustomer] = useState(null)
   const [showDropdown, setShowDropdown] = useState(false)
@@ -133,24 +134,6 @@ export default function CustomerPortal() {
           </div>
         </div>
       )}
-
-      {/* Tabs */}
-      <div className="flex gap-1 p-1 rounded-xl" style={{ backgroundColor: 'var(--bg-surface-3)' }}>
-        {TABS.map(t => {
-          const Icon = t.icon
-          return (
-            <button key={t.id} onClick={() => setActiveTab(t.id)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                activeTab === t.id
-                  ? 'bg-white text-indigo-600 shadow-sm'
-                  : 'text-slate-500 hover:text-slate-700'
-              }`}>
-              <Icon className="w-4 h-4" />
-              {t.label}
-            </button>
-          )
-        })}
-      </div>
 
       {/* Dashboard */}
       {activeTab === 'dashboard' && (

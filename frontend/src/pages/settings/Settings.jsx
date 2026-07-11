@@ -13,6 +13,7 @@ import {
   CheckCircle2, DollarSign, Mail, MessageSquare, Send, Edit2, Trash2,
   Smartphone, Monitor, Lock, ShieldCheck, ShieldOff, AlertTriangle,
   Download, Eye, EyeOff, Copy, LogOut, Globe, Laptop, Clock, XCircle,
+  ChevronRight,
 } from 'lucide-react'
 import { useAuthStore } from '@/store/authStore'
 import { authApi } from '@/api/auth'
@@ -167,6 +168,7 @@ const ANALYTICS_MENU_KEYS = [
 const SETTINGS_MENU_KEYS = [
   { key: 'settings.company', label: 'Perusahaan' },
   { key: 'settings.users', label: 'Users' },
+  { key: 'settings.company_access', label: 'Akses Perusahaan' },
   { key: 'settings.roles', label: 'Role & Permission' },
   { key: 'settings.logs', label: 'Akses Log' },
   { key: 'settings.currency', label: 'Mata Uang' },
@@ -209,6 +211,79 @@ const IOT_MENU_KEYS = [
   { key: 'iot.history', label: 'Riwayat Alert' },
 ]
 
+const APPROVAL_MENU_KEYS = [
+  { key: 'approval.pending', label: 'Menunggu Persetujuan' },
+  { key: 'approval.history', label: 'Riwayat' },
+  { key: 'approval.rules', label: 'Konfigurasi Rule' },
+]
+
+const EXECUTIVE_MENU_KEYS = [
+  { key: 'executive.overview', label: 'Overview' },
+  { key: 'executive.report', label: 'Management Report' },
+  { key: 'executive.targets', label: 'Target KPI' },
+]
+
+const INTEGRATION_MENU_KEYS = [
+  { key: 'integration.import', label: 'Import Data' },
+  { key: 'integration.export', label: 'Export Data' },
+  { key: 'integration.apikeys', label: 'API Keys' },
+  { key: 'integration.webhooks', label: 'Webhooks' },
+]
+
+const SUPPLYCHAIN_MENU_KEYS = [
+  { key: 'supplychain.map', label: 'Peta Rantai Pasok' },
+  { key: 'supplychain.trace', label: 'Traceability' },
+  { key: 'supplychain.scorecard', label: 'Supplier Scorecard' },
+  { key: 'supplychain.risk', label: 'Risk Dashboard' },
+]
+
+const CUSTOMERPORTAL_MENU_KEYS = [
+  { key: 'customerportal.dashboard', label: 'Dashboard' },
+  { key: 'customerportal.orders', label: 'Pesanan Saya' },
+  { key: 'customerportal.invoices', label: 'Invoice' },
+  { key: 'customerportal.delivery', label: 'Pengiriman' },
+]
+
+const VENDORPORTAL_MENU_KEYS = [
+  { key: 'vendorportal.dashboard', label: 'Dashboard' },
+  { key: 'vendorportal.pos', label: 'Purchase Order' },
+  { key: 'vendorportal.invoices', label: 'Invoice Saya' },
+  { key: 'vendorportal.payments', label: 'Pembayaran' },
+]
+
+// Drives the accordion list in TabRolePermission — pass a new {module, title,
+// menuKeys} entry here as more modules get converted from in-page tabs to
+// sidebar submenus.
+const ROLE_PERMISSION_MODULES = [
+  { module: 'purchasing', title: 'Purchasing', menuKeys: PURCHASING_MENU_KEYS },
+  { module: 'sales', title: 'Sales', menuKeys: SALES_MENU_KEYS },
+  { module: 'finance', title: 'Finance AP/AR', menuKeys: FINANCE_MENU_KEYS },
+  { module: 'hris', title: 'Smart HRIS', menuKeys: HRIS_MENU_KEYS },
+  { module: 'factory', title: 'Smart Factory', menuKeys: FACTORY_MENU_KEYS },
+  { module: 'warehouse', title: 'Smart Warehouse', menuKeys: WAREHOUSE_MENU_KEYS },
+  { module: 'accounting', title: 'Accounting', menuKeys: ACCOUNTING_MENU_KEYS },
+  { module: 'tax', title: 'Tax & Pajak', menuKeys: TAX_MENU_KEYS },
+  { module: 'qms', title: 'Quality (QMS)', menuKeys: QMS_MENU_KEYS },
+  { module: 'budget', title: 'Budget & Planning', menuKeys: BUDGET_MENU_KEYS },
+  { module: 'mrp', title: 'MRP & Produksi', menuKeys: MRP_MENU_KEYS },
+  { module: 'cost', title: 'Cost Accounting', menuKeys: COST_MENU_KEYS },
+  { module: 'asset', title: 'Asset & CMMS', menuKeys: ASSET_MENU_KEYS },
+  { module: 'vehicle', title: 'Smart Vehicle', menuKeys: VEHICLE_MENU_KEYS },
+  { module: 'analytics', title: 'Analytics', menuKeys: ANALYTICS_MENU_KEYS },
+  { module: 'settings', title: 'Settings', menuKeys: SETTINGS_MENU_KEYS },
+  { module: 'network', title: 'Network NOC', menuKeys: NETWORK_MENU_KEYS },
+  { module: 'building', title: 'Smart Building', menuKeys: BUILDING_MENU_KEYS },
+  { module: 'security', title: 'Smart Security', menuKeys: SECURITY_MENU_KEYS },
+  { module: 'marketplace', title: 'Marketplace', menuKeys: MARKETPLACE_MENU_KEYS },
+  { module: 'iot', title: 'IoT Hub', menuKeys: IOT_MENU_KEYS },
+  { module: 'approval', title: 'Approval Center', menuKeys: APPROVAL_MENU_KEYS },
+  { module: 'executive', title: 'Executive Dashboard', menuKeys: EXECUTIVE_MENU_KEYS },
+  { module: 'integration', title: 'Integrasi & API', menuKeys: INTEGRATION_MENU_KEYS },
+  { module: 'supplychain', title: 'Supply Chain', menuKeys: SUPPLYCHAIN_MENU_KEYS },
+  { module: 'customerportal', title: 'Customer Portal', menuKeys: CUSTOMERPORTAL_MENU_KEYS },
+  { module: 'vendorportal', title: 'Vendor Portal', menuKeys: VENDORPORTAL_MENU_KEYS },
+]
+
 const MENU_LEVEL_OPTIONS = [
   { value: 'none', label: 'Tidak Ada Akses' },
   { value: 'view', label: 'View' },
@@ -240,6 +315,12 @@ const MENU_GROUPS = [
   { module: 'Security', keys: SECURITY_MENU_KEYS },
   { module: 'Marketplace', keys: MARKETPLACE_MENU_KEYS },
   { module: 'IoT', keys: IOT_MENU_KEYS },
+  { module: 'Approval Center', keys: APPROVAL_MENU_KEYS },
+  { module: 'Executive Dashboard', keys: EXECUTIVE_MENU_KEYS },
+  { module: 'Integration', keys: INTEGRATION_MENU_KEYS },
+  { module: 'Supply Chain', keys: SUPPLYCHAIN_MENU_KEYS },
+  { module: 'Customer Portal', keys: CUSTOMERPORTAL_MENU_KEYS },
+  { module: 'Vendor Portal', keys: VENDORPORTAL_MENU_KEYS },
 ]
 
 const USER_OVERRIDE_OPTIONS = [{ value: 'inherit', label: 'Ikuti Role' }, ...MENU_LEVEL_OPTIONS]
@@ -288,6 +369,9 @@ function TabUsers() {
   const [userForm, setUserForm] = useState({ name: '', email: '', role: 'operator', department: '', password: '' })
   const [resetModal, setResetModal] = useState({ open: false, id: null, name: '', password: '' })
   const [permModal, setPermModal] = useState({ open: false, user: null, role: '', roleDefaults: {}, draft: null, loading: false, saving: false })
+  const [companyAccessModal, setCompanyAccessModal] = useState({ open: false, user: null, primaryCompanyId: '', selectedIds: [], loading: false, saving: false })
+  const { data: allCompaniesRaw } = useApi(rbacApi.getCompanies)
+  const allCompanies = Array.isArray(allCompaniesRaw?.value) ? allCompaniesRaw.value : []
 
   const { submit: saveUser, loading: savingUser } = useSubmit(
     (data) => editUser ? rbacApi.updateUser(editUser.id, data) : rbacApi.createUser(data),
@@ -343,6 +427,39 @@ function TabUsers() {
     } catch {
       toast.error('Gagal menyimpan izin khusus')
       setPermModal(prev => ({ ...prev, saving: false }))
+    }
+  }
+
+  const openCompanyAccessModal = async (row) => {
+    setCompanyAccessModal({ open: true, user: row, primaryCompanyId: '', selectedIds: [], loading: true, saving: false })
+    try {
+      const res = await rbacApi.getUserCompanies(row.id)
+      const { primary_company_id, company_ids } = res?.data || {}
+      setCompanyAccessModal({ open: true, user: row, primaryCompanyId: primary_company_id || '', selectedIds: company_ids || [], loading: false, saving: false })
+    } catch {
+      toast.error('Gagal memuat akses perusahaan user')
+      setCompanyAccessModal({ open: false, user: null, primaryCompanyId: '', selectedIds: [], loading: false, saving: false })
+    }
+  }
+
+  const toggleCompanyAccess = (companyId) => {
+    setCompanyAccessModal(prev => ({
+      ...prev,
+      selectedIds: prev.selectedIds.includes(companyId)
+        ? prev.selectedIds.filter(id => id !== companyId)
+        : [...prev.selectedIds, companyId],
+    }))
+  }
+
+  const handleSaveCompanyAccess = async () => {
+    setCompanyAccessModal(prev => ({ ...prev, saving: true }))
+    try {
+      await rbacApi.updateUserCompanies(companyAccessModal.user.id, companyAccessModal.selectedIds)
+      toast.success(`Akses perusahaan untuk ${companyAccessModal.user.name} berhasil disimpan`)
+      setCompanyAccessModal({ open: false, user: null, primaryCompanyId: '', selectedIds: [], loading: false, saving: false })
+    } catch {
+      toast.error('Gagal menyimpan akses perusahaan')
+      setCompanyAccessModal(prev => ({ ...prev, saving: false }))
     }
   }
 
@@ -412,6 +529,12 @@ function TabUsers() {
                   <button onClick={() => openPermModal(row)}
                     className="flex items-center gap-1 px-2 py-1 text-xs rounded-lg text-indigo-600 hover:bg-indigo-50 font-medium">
                     <Shield className="w-3 h-3" /> Izin Khusus
+                  </button>
+                )}
+                {canEdit && row.role !== 'superadmin' && (
+                  <button onClick={() => openCompanyAccessModal(row)}
+                    className="flex items-center gap-1 px-2 py-1 text-xs rounded-lg text-teal-600 hover:bg-teal-50 font-medium">
+                    <Building className="w-3 h-3" /> Akses Perusahaan
                   </button>
                 )}
               </div>
@@ -503,6 +626,38 @@ function TabUsers() {
           </div>
         )}
       </Modal>
+
+      {/* Modal Akses Perusahaan (multi-company membership) */}
+      <Modal open={companyAccessModal.open} onClose={() => setCompanyAccessModal({ open: false, user: null, primaryCompanyId: '', selectedIds: [], loading: false, saving: false })}
+        title={`Akses Perusahaan — ${companyAccessModal.user?.name || ''}`}>
+        {companyAccessModal.loading ? (
+          <div className="py-8 text-center text-sm text-slate-400">Memuat...</div>
+        ) : (
+          <div className="space-y-4">
+            <div className="p-3 bg-teal-50 border border-teal-200 rounded-xl text-sm text-teal-700">
+              Centang perusahaan tambahan yang bisa diakses (di-switch ke) user ini. Perusahaan utama selalu aktif dan tidak bisa dihapus di sini.
+            </div>
+            <div className="space-y-1.5 max-h-[40vh] overflow-y-auto">
+              {allCompanies.map(co => {
+                const isPrimary = co.id === companyAccessModal.primaryCompanyId
+                const checked = isPrimary || companyAccessModal.selectedIds.includes(co.id)
+                return (
+                  <label key={co.id} className={`flex items-center gap-3 p-2.5 rounded-lg border ${isPrimary ? 'bg-slate-50 border-slate-200' : 'border-slate-200 hover:bg-slate-50 cursor-pointer'}`}>
+                    <input type="checkbox" checked={checked} disabled={isPrimary}
+                      onChange={() => toggleCompanyAccess(co.id)} />
+                    <span className="text-sm text-slate-700 flex-1">{co.name}</span>
+                    {isPrimary && <Badge variant="secondary">Perusahaan Utama</Badge>}
+                  </label>
+                )
+              })}
+            </div>
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+              <Button variant="secondary" onClick={() => setCompanyAccessModal({ open: false, user: null, primaryCompanyId: '', selectedIds: [], loading: false, saving: false })}>Batal</Button>
+              <Button loading={companyAccessModal.saving} icon={<Save className="w-4 h-4" />} onClick={handleSaveCompanyAccess}>Simpan</Button>
+            </div>
+          </div>
+        )}
+      </Modal>
     </>
   )
 }
@@ -513,6 +668,20 @@ function TabRolePermission() {
 
   const [selectedRole, setSelectedRole] = useState('finance')
   const isSystem = selectedRole === 'superadmin'
+  const [expandedModule, setExpandedModule] = useState(null)
+
+  const { data: companiesRaw } = useApi(rbacApi.getCompanies)
+  const companies = Array.isArray(companiesRaw?.value) ? companiesRaw.value : []
+  const [selectedCompanyId, setSelectedCompanyId] = useState('')
+  useEffect(() => {
+    if (!selectedCompanyId && companies.length > 0) {
+      setSelectedCompanyId((companies.find(co => co.current) || companies[0]).id)
+    }
+  }, [companies, selectedCompanyId])
+
+  // Switching role/company invalidates whatever was open — the previously
+  // expanded module's draft belonged to a different role/company pair.
+  useEffect(() => { setExpandedModule(null) }, [selectedRole, selectedCompanyId])
 
   return (
     <div className="space-y-4">
@@ -520,8 +689,12 @@ function TabRolePermission() {
         <CardHeader>
           <div className="flex items-center justify-between flex-wrap gap-3">
             <CardTitle>Izin Menu per Role</CardTitle>
-            <Select value={selectedRole} onChange={e => setSelectedRole(e.target.value)}
-              options={ROLES_LIST.map(r => ({ value: r, label: r.charAt(0).toUpperCase() + r.slice(1) }))} />
+            <div className="flex items-center gap-2 flex-wrap">
+              <Select value={selectedCompanyId} onChange={e => setSelectedCompanyId(e.target.value)}
+                options={companies.map(co => ({ value: co.id, label: co.name }))} />
+              <Select value={selectedRole} onChange={e => setSelectedRole(e.target.value)}
+                options={ROLES_LIST.map(r => ({ value: r, label: r.charAt(0).toUpperCase() + r.slice(1) }))} />
+            </div>
           </div>
         </CardHeader>
         <CardContent>
@@ -531,44 +704,71 @@ function TabRolePermission() {
               Super Admin memiliki semua akses dan tidak dapat diubah.
             </div>
           )}
+          <p className="text-xs text-slate-400 mt-2">
+            Izin di bawah berlaku khusus utk perusahaan yang dipilih — role yang sama bisa punya tingkat akses berbeda di perusahaan lain. Klik sebuah modul untuk membuka detail izinnya.
+          </p>
         </CardContent>
       </Card>
 
-      <MenuPermissionCard module="purchasing" title="Purchasing" menuKeys={PURCHASING_MENU_KEYS} selectedRole={selectedRole} isSystem={isSystem} canEdit={canEdit} />
-      <MenuPermissionCard module="sales" title="Sales" menuKeys={SALES_MENU_KEYS} selectedRole={selectedRole} isSystem={isSystem} canEdit={canEdit} />
-      <MenuPermissionCard module="finance" title="Finance AP/AR" menuKeys={FINANCE_MENU_KEYS} selectedRole={selectedRole} isSystem={isSystem} canEdit={canEdit} />
-      <MenuPermissionCard module="hris" title="Smart HRIS" menuKeys={HRIS_MENU_KEYS} selectedRole={selectedRole} isSystem={isSystem} canEdit={canEdit} />
-      <MenuPermissionCard module="factory" title="Smart Factory" menuKeys={FACTORY_MENU_KEYS} selectedRole={selectedRole} isSystem={isSystem} canEdit={canEdit} />
-      <MenuPermissionCard module="warehouse" title="Smart Warehouse" menuKeys={WAREHOUSE_MENU_KEYS} selectedRole={selectedRole} isSystem={isSystem} canEdit={canEdit} />
-      <MenuPermissionCard module="accounting" title="Accounting" menuKeys={ACCOUNTING_MENU_KEYS} selectedRole={selectedRole} isSystem={isSystem} canEdit={canEdit} />
-      <MenuPermissionCard module="tax" title="Tax & Pajak" menuKeys={TAX_MENU_KEYS} selectedRole={selectedRole} isSystem={isSystem} canEdit={canEdit} />
-      <MenuPermissionCard module="qms" title="Quality (QMS)" menuKeys={QMS_MENU_KEYS} selectedRole={selectedRole} isSystem={isSystem} canEdit={canEdit} />
-      <MenuPermissionCard module="budget" title="Budget & Planning" menuKeys={BUDGET_MENU_KEYS} selectedRole={selectedRole} isSystem={isSystem} canEdit={canEdit} />
-      <MenuPermissionCard module="mrp" title="MRP & Produksi" menuKeys={MRP_MENU_KEYS} selectedRole={selectedRole} isSystem={isSystem} canEdit={canEdit} />
-      <MenuPermissionCard module="cost" title="Cost Accounting" menuKeys={COST_MENU_KEYS} selectedRole={selectedRole} isSystem={isSystem} canEdit={canEdit} />
-      <MenuPermissionCard module="asset" title="Asset & CMMS" menuKeys={ASSET_MENU_KEYS} selectedRole={selectedRole} isSystem={isSystem} canEdit={canEdit} />
-      <MenuPermissionCard module="vehicle" title="Smart Vehicle" menuKeys={VEHICLE_MENU_KEYS} selectedRole={selectedRole} isSystem={isSystem} canEdit={canEdit} />
-      <MenuPermissionCard module="analytics" title="Analytics" menuKeys={ANALYTICS_MENU_KEYS} selectedRole={selectedRole} isSystem={isSystem} canEdit={canEdit} />
-      <MenuPermissionCard module="settings" title="Settings" menuKeys={SETTINGS_MENU_KEYS} selectedRole={selectedRole} isSystem={isSystem} canEdit={canEdit} />
-      <MenuPermissionCard module="network" title="Network NOC" menuKeys={NETWORK_MENU_KEYS} selectedRole={selectedRole} isSystem={isSystem} canEdit={canEdit} />
-      <MenuPermissionCard module="building" title="Smart Building" menuKeys={BUILDING_MENU_KEYS} selectedRole={selectedRole} isSystem={isSystem} canEdit={canEdit} />
-      <MenuPermissionCard module="security" title="Smart Security" menuKeys={SECURITY_MENU_KEYS} selectedRole={selectedRole} isSystem={isSystem} canEdit={canEdit} />
-      <MenuPermissionCard module="marketplace" title="Marketplace" menuKeys={MARKETPLACE_MENU_KEYS} selectedRole={selectedRole} isSystem={isSystem} canEdit={canEdit} />
-      <MenuPermissionCard module="iot" title="IoT Hub" menuKeys={IOT_MENU_KEYS} selectedRole={selectedRole} isSystem={isSystem} canEdit={canEdit} />
+      <Card>
+        <CardContent className="p-0">
+          {ROLE_PERMISSION_MODULES.map(({ module, title, menuKeys }, i) => (
+            <ModuleAccordionItem
+              key={module}
+              module={module}
+              title={title}
+              menuKeys={menuKeys}
+              isOpen={expandedModule === module}
+              onToggle={() => setExpandedModule(expandedModule === module ? null : module)}
+              selectedRole={selectedRole}
+              selectedCompanyId={selectedCompanyId}
+              isSystem={isSystem}
+              canEdit={canEdit}
+              isLast={i === ROLE_PERMISSION_MODULES.length - 1}
+            />
+          ))}
+        </CardContent>
+      </Card>
     </div>
   )
 }
 
-// Reusable per-module "Izin Menu Detail" card — pass a new {module, menuKeys} pair
-// here as more modules get converted from in-page tabs to sidebar submenus.
-function MenuPermissionCard({ module, title, menuKeys, selectedRole, isSystem, canEdit = true }) {
-  const { data: raw, refetch } = useApi(() => rbacApi.getMenuPermissions(selectedRole, module), [selectedRole, module])
+// One row in the Role & Permission accordion list — collapsed by default
+// (just the module title, hover-highlighted), expands on click to reveal its
+// menu-key/level-akses table. Only the expanded module's permissions are
+// fetched (the fetch lives inside MenuPermissionDetail, which unmounts on
+// collapse), so browsing the list doesn't fire 27 requests up front.
+function ModuleAccordionItem({ module, title, menuKeys, isOpen, onToggle, selectedRole, selectedCompanyId, isSystem, canEdit, isLast }) {
+  return (
+    <div className={isLast ? '' : 'border-b border-slate-100'}>
+      <button
+        onClick={onToggle}
+        className="w-full flex items-center gap-2 px-4 py-3 text-left hover:bg-slate-50 transition-colors"
+      >
+        <ChevronRight className={`w-4 h-4 text-slate-400 transition-transform ${isOpen ? 'rotate-90' : ''}`} />
+        <span className="text-sm font-medium text-slate-700">{title}</span>
+      </button>
+      {isOpen && (
+        <div className="px-4 pb-4">
+          <MenuPermissionDetail
+            module={module} title={title} menuKeys={menuKeys}
+            selectedRole={selectedRole} selectedCompanyId={selectedCompanyId}
+            isSystem={isSystem} canEdit={canEdit}
+          />
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Fetches + edits one module's role/company-scoped menu-key levels — rendered
+// only while its accordion row is expanded (see ModuleAccordionItem).
+function MenuPermissionDetail({ module, title, menuKeys, selectedRole, selectedCompanyId, isSystem, canEdit = true }) {
+  const { data: raw, refetch } = useApi(() => rbacApi.getMenuPermissions(selectedRole, module, selectedCompanyId), [selectedRole, module, selectedCompanyId])
   const saved = raw?.data || {}
   const [draft, setDraft] = useState(null)
   const current = draft ?? saved
   const [saving, setSaving] = useState(false)
-
-  useEffect(() => { setDraft(null) }, [selectedRole])
 
   const setLevel = (menuKey, level) => {
     if (isSystem || !canEdit) return
@@ -579,7 +779,7 @@ function MenuPermissionCard({ module, title, menuKeys, selectedRole, isSystem, c
     if (isSystem || !canEdit) return
     setSaving(true)
     try {
-      await rbacApi.updateMenuPermissions(selectedRole, current)
+      await rbacApi.updateMenuPermissions(selectedRole, current, selectedCompanyId)
       toast.success(`Izin menu ${title} untuk role ${selectedRole} berhasil disimpan`)
       setDraft(null)
       refetch()
@@ -587,21 +787,16 @@ function MenuPermissionCard({ module, title, menuKeys, selectedRole, isSystem, c
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between flex-wrap gap-3">
-          <div>
-            <CardTitle>Izin Menu Detail — {title}</CardTitle>
-            <p className="text-xs text-slate-400 mt-0.5">Delete kini bisa diberikan per role seperti tier lainnya — pilih "View + Add + Edit + Delete" untuk mengaktifkan.</p>
-          </div>
-          {!isSystem && canEdit && (
-            <Button size="sm" loading={saving} icon={<Save className="w-4 h-4" />} onClick={handleSave}>
-              Simpan
-            </Button>
-          )}
-        </div>
-      </CardHeader>
-      <CardContent>
+    <div className="rounded-xl border" style={{ borderColor: 'var(--border-subtle)' }}>
+      <div className="flex items-center justify-between flex-wrap gap-3 px-4 py-3 border-b" style={{ borderColor: 'var(--border-subtle)' }}>
+        <p className="text-xs text-slate-400">Delete kini bisa diberikan per role seperti tier lainnya — pilih "View + Add + Edit + Delete" untuk mengaktifkan.</p>
+        {!isSystem && canEdit && (
+          <Button size="sm" loading={saving} icon={<Save className="w-4 h-4" />} onClick={handleSave}>
+            Simpan
+          </Button>
+        )}
+      </div>
+      <div className="p-4">
         {isSystem && (
           <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-700 flex items-center gap-2">
             <Shield className="w-4 h-4 flex-shrink-0" />
@@ -618,7 +813,7 @@ function MenuPermissionCard({ module, title, menuKeys, selectedRole, isSystem, c
             </thead>
             <tbody>
               {menuKeys.map((m, i) => (
-                <tr key={m.key} className={i % 2 === 0 ? 'bg-white' : 'bg-slate-50/40'}>
+                <tr key={m.key} className={`hover:bg-indigo-50/40 transition-colors ${i % 2 === 0 ? 'bg-white' : 'bg-slate-50/40'}`}>
                   <td className="px-4 py-2.5 font-medium text-slate-700">{m.label}</td>
                   <td className="px-4 py-2.5">
                     <Select
@@ -633,6 +828,101 @@ function MenuPermissionCard({ module, title, menuKeys, selectedRole, isSystem, c
             </tbody>
           </table>
         </div>
+      </div>
+    </div>
+  )
+}
+
+// Master matrix: every user visible to the requester x every company visible
+// to the requester, letting an admin see/edit at a glance who can access which
+// company — instead of opening the per-user "Akses Perusahaan" modal in the
+// Users tab one person at a time. Backed by GetCompanyAccessMatrix (one request,
+// scoped server-side to what the requester can already see) and reuses the same
+// updateUserCompanies write endpoint the per-user modal uses.
+function TabCompanyAccessMatrix() {
+  const { canDo } = useAuthStore()
+  const canEdit = canDo('settings.company_access', 'edit')
+  const { data: raw, loading, refetch } = useApi(rbacApi.getCompanyAccessMatrix)
+  const companies = raw?.data?.companies || []
+  const users = raw?.data?.users || []
+  const [savingUserId, setSavingUserId] = useState(null)
+
+  const toggleAccess = async (targetUser, companyId) => {
+    if (!canEdit || companyId === targetUser.primary_company_id || targetUser.role === 'superadmin') return
+    const has = targetUser.company_ids.includes(companyId)
+    const nextIds = (has
+      ? targetUser.company_ids.filter(id => id !== companyId)
+      : [...targetUser.company_ids, companyId]
+    ).filter(id => id !== targetUser.primary_company_id)
+    setSavingUserId(targetUser.id)
+    try {
+      await rbacApi.updateUserCompanies(targetUser.id, nextIds)
+      toast.success(`Akses perusahaan ${targetUser.name} diperbarui`)
+      refetch()
+    } catch {
+      toast.error('Gagal memperbarui akses perusahaan')
+    } finally {
+      setSavingUserId(null)
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Matrix User &times; Perusahaan</CardTitle>
+        <p className="text-xs text-slate-400 mt-1">
+          Satu akun login bisa mengakses lebih dari satu perusahaan. Centang untuk memberi akses tambahan ke user tsb — perusahaan utama (badge "Utama") selalu aktif dan tidak bisa dilepas dari sini, ubah lewat tab Users kalau perlu ganti perusahaan utama.
+        </p>
+      </CardHeader>
+      <CardContent className={companies.length && users.length ? 'p-0' : ''}>
+        {loading ? (
+          <div className="py-12 text-center text-sm text-slate-400">Memuat...</div>
+        ) : companies.length === 0 || users.length === 0 ? (
+          <div className="py-12 text-center text-sm text-slate-400">Tidak ada data untuk ditampilkan</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-slate-200 bg-slate-50">
+                  <th className="px-4 py-3 text-left font-semibold text-slate-600 whitespace-nowrap">User</th>
+                  {companies.map(co => (
+                    <th key={co.id} className="px-4 py-3 text-center font-semibold text-slate-600 whitespace-nowrap">{co.name}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {users.map((u, i) => (
+                  <tr key={u.id} className={`hover:bg-indigo-50/40 transition-colors ${i % 2 === 0 ? 'bg-white' : 'bg-slate-50/40'}`}>
+                    <td className="px-4 py-2.5 whitespace-nowrap">
+                      <p className="font-medium text-slate-700">{u.name}</p>
+                      <p className="text-xs text-slate-400">{u.email}</p>
+                      <div className="mt-1">{roleBadge(u.role)}</div>
+                    </td>
+                    {companies.map(co => {
+                      const isPrimary = co.id === u.primary_company_id
+                      const isSuperadmin = u.role === 'superadmin'
+                      const checked = isSuperadmin || isPrimary || u.company_ids.includes(co.id)
+                      return (
+                        <td key={co.id} className="px-4 py-2.5 text-center">
+                          <div className="inline-flex flex-col items-center gap-0.5">
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              disabled={isPrimary || isSuperadmin || !canEdit || savingUserId === u.id}
+                              onChange={() => toggleAccess(u, co.id)}
+                              className="w-4 h-4 accent-indigo-600 cursor-pointer disabled:cursor-not-allowed disabled:opacity-60"
+                            />
+                            {isPrimary && <span className="text-[9px] text-slate-400">Utama</span>}
+                          </div>
+                        </td>
+                      )
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </CardContent>
     </Card>
   )
@@ -923,8 +1213,10 @@ function TabEmailConfig() {
 }
 
 function TabCompany({ user }) {
+  const switchCompany = useAuthStore((s) => s.switchCompany)
   const [showCompanyModal, setShowCompanyModal] = useState(false)
   const [companyForm, setCompanyForm] = useState({ name: '', npwp: '', city: '', email: '', phone: '' })
+  const [switchingId, setSwitchingId] = useState(null)
 
   const { data: companiesRaw, refetch: refetchCompanies } = useApi(rbacApi.getCompanies)
   const companies = Array.isArray(companiesRaw?.value) ? companiesRaw.value : []
@@ -933,6 +1225,17 @@ function TabCompany({ user }) {
     successMsg: 'Perusahaan berhasil ditambahkan',
     onSuccess: () => { setShowCompanyModal(false); setCompanyForm({ name: '', npwp: '', city: '', email: '', phone: '' }); refetchCompanies() },
   })
+
+  const handleSwitch = async (co) => {
+    setSwitchingId(co.id)
+    try {
+      await switchCompany(co.id)
+      // switchCompany triggers a full page reload on success — no further action needed here
+    } catch {
+      toast.error('Gagal beralih perusahaan')
+      setSwitchingId(null)
+    }
+  }
 
   return (
     <div className="space-y-4">
@@ -965,7 +1268,7 @@ function TabCompany({ user }) {
                 </div>
                 {!co.current && co.is_active && (
                   <Button size="sm" variant="secondary" icon={<RefreshCw className="w-3.5 h-3.5" />}
-                    onClick={() => toast('Switch company: re-login diperlukan di mode production')}>
+                    loading={switchingId === co.id} onClick={() => handleSwitch(co)}>
                     Switch
                   </Button>
                 )}
@@ -1627,9 +1930,9 @@ function TabSecurityPolicy() {
 
 // ─── Main Settings Page ────────────────────────────────────────────────────────
 
-const VALID_TABS = ['company', 'users', 'roles', 'logs', 'currency', 'notifications', '2fa', 'sessions', 'audit', 'security']
+const VALID_TABS = ['company', 'users', 'company-access', 'roles', 'logs', 'currency', 'notifications', '2fa', 'sessions', 'audit', 'security']
 const SECTION_TITLE = {
-  company: 'Perusahaan', users: 'Users', roles: 'Role & Permission', logs: 'Akses Log',
+  company: 'Perusahaan', users: 'Users', 'company-access': 'Akses Perusahaan', roles: 'Role & Permission', logs: 'Akses Log',
   currency: 'Mata Uang', notifications: 'Notifikasi', '2fa': '2FA', sessions: 'Sessions',
   audit: 'Audit Trail', security: 'Kebijakan',
 }
@@ -1728,6 +2031,9 @@ export default function SettingsPage() {
 
       {/* ── Tab: Users ── */}
       {activeTab === 'users' && <TabUsers />}
+
+      {/* ── Tab: Akses Perusahaan (master matrix) ── */}
+      {activeTab === 'company-access' && <TabCompanyAccessMatrix />}
 
       {/* ── Tab: Role & Permission ── */}
       {activeTab === 'roles' && <TabRolePermission />}

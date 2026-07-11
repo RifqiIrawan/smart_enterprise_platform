@@ -82,7 +82,7 @@ export default function App() {
           <Route index element={<Navigate to="/dashboard" replace />} />
           <Route path="dashboard" element={<Dashboard />} />
           <Route path="ai" element={<AIAssistant />} />
-          <Route path="approval" element={<ApprovalCenter />} />
+          <Route path="approval/:tab?" element={<RequirePermission permission="approval.view"><ApprovalCenter /></RequirePermission>} />
           <Route path="factory/:tab?" element={<RequirePermission permission="factory.view"><SmartFactory /></RequirePermission>} />
           <Route path="warehouse/:tab?" element={<RequirePermission permission="warehouse.view"><SmartWarehouse /></RequirePermission>} />
           <Route path="asset/:tab?" element={<RequirePermission permission="asset.view"><AssetMaintenance /></RequirePermission>} />
@@ -105,13 +105,13 @@ export default function App() {
           <Route path="settings/:tab?" element={<RequirePermission permission="settings.view"><Settings /></RequirePermission>} />
           <Route path="documents" element={<Documents />} />
           <Route path="print" element={<PrintCenter />} />
-          <Route path="integration" element={<Integration />} />
-          <Route path="portal/customer" element={<CustomerPortal />} />
-          <Route path="portal/vendor" element={<VendorPortal />} />
+          <Route path="integration/:tab?" element={<RequirePermission permission="integration.view"><Integration /></RequirePermission>} />
+          <Route path="portal/customer/:tab?" element={<RequirePermission permission="customerportal.view"><CustomerPortal /></RequirePermission>} />
+          <Route path="portal/vendor/:tab?" element={<RequirePermission permission="vendorportal.view"><VendorPortal /></RequirePermission>} />
           <Route path="marketplace/:tab?" element={<RequirePermission permission="marketplace.view"><Marketplace /></RequirePermission>} />
           <Route path="iot-hub/:tab?" element={<RequirePermission permission="iot.view"><IoTHub /></RequirePermission>} />
-          <Route path="supply-chain" element={<SupplyChain />} />
-          <Route path="executive" element={<ExecutiveDashboard />} />
+          <Route path="supply-chain/:tab?" element={<RequirePermission permission="supplychain.view"><SupplyChain /></RequirePermission>} />
+          <Route path="executive/:tab?" element={<RequirePermission permission="executive.view"><ExecutiveDashboard /></RequirePermission>} />
           <Route path="403" element={<Forbidden />} />
         </Route>
         <Route path="*" element={<NotFound />} />

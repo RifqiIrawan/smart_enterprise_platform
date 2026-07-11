@@ -6,4 +6,5 @@ export const authApi = {
   me: () => api.get('/auth/me'),
   refresh: () => api.post('/auth/refresh'),
   changePassword: (data) => api.put('/auth/password', data),
+  switchCompany: (companyId) => api.post('/auth/switch-company', { company_id: companyId }),
 }
