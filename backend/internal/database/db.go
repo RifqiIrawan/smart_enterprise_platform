@@ -638,14 +638,27 @@ func Migrate() {
 			 CROSS JOIN (VALUES ('executive.overview'),('executive.report'),('executive.targets')) AS m(menu_key)
 			 ON CONFLICT (company_id, role, menu_key) DO NOTHING`,
 		// Integration (Import/Export/API Keys/Webhooks) — previously had NO gate at all (any
-		// authenticated role could create API keys, delete webhooks, run imports, etc.) — every
-		// role gets 'edit' uniformly across all 4 tabs to avoid regressing existing access; admin
-		// can later tighten this per-role via Settings now that it's DB-driven.
+		// authenticated role could create API keys, delete webhooks, run imports, etc.). Tightened:
+		// apikeys/webhooks are exfiltration-risk capabilities (a rogue webhook can ship business
+		// data to an attacker's URL; an API key grants standing programmatic access) so only
+		// admin/superadmin get them. import/export are lower-risk data-entry conveniences — 'add'
+		// (can execute an import) for the ops-heavy roles that plausibly bulk-load data
+		// (finance/warehouse/purchasing), 'view' (list/preview/export only) for the rest.
+		`INSERT INTO role_menu_permissions (company_id, role, menu_key, level)
+			 SELECT (SELECT id FROM companies ORDER BY created_at LIMIT 1), r.role, 'integration.import', r.level FROM
+			 (VALUES ('superadmin','edit'),('admin','edit'),('finance','add'),('hr','view'),('warehouse','add'),
+			         ('sales','view'),('purchasing','add'),('operator','view'),('manager','view'),('viewer','view')) AS r(role, level)
+			 ON CONFLICT (company_id, role, menu_key) DO NOTHING`,
+		`INSERT INTO role_menu_permissions (company_id, role, menu_key, level)
+			 SELECT (SELECT id FROM companies ORDER BY created_at LIMIT 1), r.role, 'integration.export', r.level FROM
+			 (VALUES ('superadmin','edit'),('admin','edit'),('finance','view'),('hr','view'),('warehouse','view'),
+			         ('sales','view'),('purchasing','view'),('operator','view'),('manager','view'),('viewer','view')) AS r(role, level)
+			 ON CONFLICT (company_id, role, menu_key) DO NOTHING`,
 		`INSERT INTO role_menu_permissions (company_id, role, menu_key, level)
 			 SELECT (SELECT id FROM companies ORDER BY created_at LIMIT 1), r.role, m.menu_key, r.level FROM
-			 (VALUES ('superadmin','edit'),('admin','edit'),('finance','edit'),('hr','edit'),('warehouse','edit'),
-			         ('sales','edit'),('purchasing','edit'),('operator','edit'),('manager','edit'),('viewer','edit')) AS r(role, level)
-			 CROSS JOIN (VALUES ('integration.import'),('integration.export'),('integration.apikeys'),('integration.webhooks')) AS m(menu_key)
+			 (VALUES ('superadmin','edit'),('admin','edit'),('finance','none'),('hr','none'),('warehouse','none'),
+			         ('sales','none'),('purchasing','none'),('operator','none'),('manager','none'),('viewer','none')) AS r(role, level)
+			 CROSS JOIN (VALUES ('integration.apikeys'),('integration.webhooks')) AS m(menu_key)
 			 ON CONFLICT (company_id, role, menu_key) DO NOTHING`,
 		// Supply Chain Visibility & Traceability — 100% read-only (map/traceability/scorecard/
 		// risk dashboards, no create/edit/delete anywhere), previously had NO gate at all — every
