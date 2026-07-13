@@ -317,10 +317,14 @@ func CreateStockTransfer(c *gin.Context) {
 	}
 	// Record movement
 	var mvID string
-	database.DB.QueryRow(
+	err = database.DB.QueryRow(
 		`INSERT INTO stock_movements (company_id, inventory_id, type, qty, reference, notes) VALUES ($1,$2,'transfer',$3,'TRANSFER',$4) RETURNING id`,
 		companyID, req.InventoryID, req.Qty, "Transfer: "+req.FromLocation+" → "+req.ToLocation+" | "+req.Notes,
 	).Scan(&mvID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": err.Error()})
+		return
+	}
 	database.WriteAuditLog(c.GetString("user_id"), "TRANSFER", "inventory", req.InventoryID, "Transfer stok ke "+req.ToLocation, c.ClientIP())
 	c.JSON(http.StatusCreated, gin.H{"success": true, "data": gin.H{
 		"id": mvID, "from": req.FromLocation, "to": req.ToLocation, "qty": req.Qty, "created_at": time.Now(),

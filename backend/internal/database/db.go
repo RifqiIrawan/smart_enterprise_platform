@@ -1452,15 +1452,18 @@ func Migrate() {
 	seedPhase34to37()
 }
 
-// WriteAuditLog records an action to audit_logs. Non-blocking: ignores errors.
+// WriteAuditLog records an action to audit_logs. Non-blocking: never fails the caller,
+// but logs a warning on failure so a broken audit trail doesn't go unnoticed.
 func WriteAuditLog(userID, action, entity, entityID, description, ip string) {
 	if DB == nil {
 		return
 	}
-	DB.Exec(
+	if _, err := DB.Exec(
 		`INSERT INTO audit_logs (user_id, action, entity, entity_id, description, ip_address) VALUES ($1,$2,$3,$4,$5,$6)`,
 		userID, action, entity, entityID, description, ip,
-	)
+	); err != nil {
+		log.Printf("WriteAuditLog failed (action=%s entity=%s): %v", action, entity, err)
+	}
 }
 
 // CreateNotification inserts an in-app notification for a user. Non-blocking: ignores errors.
