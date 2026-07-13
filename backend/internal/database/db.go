@@ -1280,6 +1280,14 @@ func Migrate() {
 		// Phase 34-37: extend existing tables
 		`ALTER TABLE vendors         ADD COLUMN IF NOT EXISTS code         VARCHAR(50)`,
 		`ALTER TABLE vendors         ADD COLUMN IF NOT EXISTS payment_term VARCHAR(20) DEFAULT 'NET30'`,
+		// handlers/purchasing.go's CreateVendor/GetVendors/UpdateVendor read/write
+		// contact+address, but this table's original shape only ever had phone (no
+		// address at all) — same no-op-CREATE-TABLE drift as inventory/purchase_orders
+		// above. Backfill contact from the old phone column so existing vendors don't
+		// lose their number.
+		`ALTER TABLE vendors         ADD COLUMN IF NOT EXISTS contact      VARCHAR(100)`,
+		`ALTER TABLE vendors         ADD COLUMN IF NOT EXISTS address      TEXT`,
+		`UPDATE vendors SET contact = phone WHERE contact IS NULL AND phone IS NOT NULL`,
 		`ALTER TABLE delivery_orders ADD COLUMN IF NOT EXISTS carrier       VARCHAR(100)`,
 		`ALTER TABLE delivery_orders ADD COLUMN IF NOT EXISTS tracking      VARCHAR(100)`,
 		`ALTER TABLE delivery_orders ADD COLUMN IF NOT EXISTS received_date DATE`,
