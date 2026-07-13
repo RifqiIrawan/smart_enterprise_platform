@@ -336,13 +336,16 @@ func GeneratePPh21(c *gin.Context) {
 		pph21Setahun := hitungProgresif(pkp)
 		pph21Sebulan := pph21Setahun / 12
 
-		database.DB.Exec(
+		if _, err := database.DB.Exec(
 			`INSERT INTO pph21_calculations
 			 (company_id, employee_id, employee_name, period, bruto_gaji, biaya_jabatan, penghasilan_neto, ptkp_status, ptkp_amount, pkp, pph21_setahun, pph21_sebulan, created_by)
 			 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
 			companyID, empID, empName, body.Period, salary, biayaJabatan, penghNeto,
 			body.PTKPDefault, ptkp, pkp, pph21Setahun, pph21Sebulan, userID,
-		)
+		); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
 		count++
 	}
 	database.WriteAuditLog(userID, "generate", "pph21", companyID, fmt.Sprintf("PPh 21 %s: %d karyawan", body.Period, count), c.ClientIP())
@@ -560,7 +563,7 @@ func GenerateBPJS(c *gin.Context) {
 		totalEE := jhtEE + jpEE + kesEE
 		totalER := jhtER + jpER + jkk + jkm + kesER
 
-		database.DB.Exec(
+		if _, err := database.DB.Exec(
 			`INSERT INTO bpjs_calculations
 			 (company_id, employee_id, employee_name, period, gaji_pokok,
 			  jht_employee, jht_company, jp_employee, jp_company, jkk, jkm,
@@ -568,7 +571,10 @@ func GenerateBPJS(c *gin.Context) {
 			 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
 			companyID, empID, empName, body.Period, gaji,
 			jhtEE, jhtER, jpEE, jpER, jkk, jkm, kesEE, kesER, totalEE, totalER,
-		)
+		); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
 		count++
 	}
 	database.WriteAuditLog(userID, "generate", "bpjs", companyID, fmt.Sprintf("BPJS %s: %d karyawan", body.Period, count), c.ClientIP())
