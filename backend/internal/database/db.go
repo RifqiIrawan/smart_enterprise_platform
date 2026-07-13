@@ -63,6 +63,11 @@ func Migrate() {
 			last_login TIMESTAMPTZ,
 			created_at TIMESTAMPTZ DEFAULT NOW()
 		)`,
+		// handlers/security_adv.go's 2FA setup/enable/disable persists here — added
+		// after the fact, so existing installs need these backfilled via ALTER.
+		`ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_secret VARCHAR(64)`,
+		`ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_enabled BOOLEAN DEFAULT FALSE`,
+		`ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_backup_codes TEXT`,
 		// Extra company memberships beyond a user's primary users.company_id — grants
 		// access to switch into additional companies without changing their home company.
 		`CREATE TABLE IF NOT EXISTS user_companies (
@@ -78,6 +83,32 @@ func Migrate() {
 			entity_id VARCHAR(100),
 			description TEXT,
 			ip_address VARCHAR(50),
+			created_at TIMESTAMPTZ DEFAULT NOW()
+		)`,
+		// handlers/security_adv.go's UpdateSecurityPolicy/GetSecurityPolicy
+		`CREATE TABLE IF NOT EXISTS security_policies (
+			company_id UUID PRIMARY KEY REFERENCES companies(id),
+			min_password_length INTEGER DEFAULT 8,
+			require_uppercase BOOLEAN DEFAULT TRUE,
+			require_number BOOLEAN DEFAULT TRUE,
+			require_special BOOLEAN DEFAULT FALSE,
+			password_expiry_days INTEGER DEFAULT 90,
+			max_login_attempts INTEGER DEFAULT 5,
+			lockout_minutes INTEGER DEFAULT 30,
+			session_timeout_min INTEGER DEFAULT 120,
+			enforce_2fa BOOLEAN DEFAULT FALSE,
+			updated_at TIMESTAMPTZ DEFAULT NOW()
+		)`,
+		// handlers/security_adv.go's GetSessions/RevokeSession/RevokeAllSessions, one
+		// row per login (populated by Login, checked by AuthMiddleware, removed by
+		// Logout/RevokeSession — see auth.go and middleware/auth.go).
+		`CREATE TABLE IF NOT EXISTS user_sessions (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			device VARCHAR(255),
+			ip VARCHAR(64),
+			location VARCHAR(255) DEFAULT '',
+			last_active TIMESTAMPTZ DEFAULT NOW(),
 			created_at TIMESTAMPTZ DEFAULT NOW()
 		)`,
 		`CREATE TABLE IF NOT EXISTS notifications (

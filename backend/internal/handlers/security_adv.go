@@ -88,7 +88,10 @@ func Setup2FA(c *gin.Context) {
 	if database.DB != nil {
 		userID := c.GetString("user_id")
 		database.DB.QueryRow("SELECT email FROM users WHERE id=$1", userID).Scan(&email)
-		database.DB.Exec("UPDATE users SET totp_secret=$1, totp_enabled=false WHERE id=$2", secret, userID)
+		if _, err := database.DB.Exec("UPDATE users SET totp_secret=$1, totp_enabled=false WHERE id=$2", secret, userID); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": err.Error()})
+			return
+		}
 	}
 	otpauthURL := fmt.Sprintf(
 		"otpauth://totp/SEP:%s?secret=%s&issuer=SEP&algorithm=SHA1&digits=6&period=30",
@@ -120,7 +123,10 @@ func Enable2FA(c *gin.Context) {
 	}
 	codes := genBackupCodes()
 	codesStr := strings.Join(codes, ",")
-	database.DB.Exec("UPDATE users SET totp_enabled=true, totp_backup_codes=$1 WHERE id=$2", codesStr, userID)
+	if _, err := database.DB.Exec("UPDATE users SET totp_enabled=true, totp_backup_codes=$1 WHERE id=$2", codesStr, userID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": err.Error()})
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "backup_codes": codes})
 }
 
@@ -140,7 +146,10 @@ func Disable2FA(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Kode OTP tidak valid"})
 		return
 	}
-	database.DB.Exec("UPDATE users SET totp_enabled=false, totp_secret=NULL, totp_backup_codes=NULL WHERE id=$1", userID)
+	if _, err := database.DB.Exec("UPDATE users SET totp_enabled=false, totp_secret=NULL, totp_backup_codes=NULL WHERE id=$1", userID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": err.Error()})
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{"success": true})
 }
 
@@ -148,7 +157,10 @@ func RegenerateBackupCodes(c *gin.Context) {
 	codes := genBackupCodes()
 	if database.DB != nil {
 		userID := c.GetString("user_id")
-		database.DB.Exec("UPDATE users SET totp_backup_codes=$1 WHERE id=$2", strings.Join(codes, ","), userID)
+		if _, err := database.DB.Exec("UPDATE users SET totp_backup_codes=$1 WHERE id=$2", strings.Join(codes, ","), userID); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": err.Error()})
+			return
+		}
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "backup_codes": codes})
 }
@@ -166,11 +178,12 @@ func GetSessions(c *gin.Context) {
 		return
 	}
 	userID := c.GetString("user_id")
+	currentSessionID := c.GetString("session_id")
 	rows, err := database.DB.Query(
-		`SELECT id, device, ip, location, last_active, is_current, created_at
+		`SELECT id, device, ip, location, last_active, created_at
 		 FROM user_sessions WHERE user_id=$1 ORDER BY last_active DESC`, userID)
 	if err != nil {
-		c.JSON(http.StatusOK, gin.H{"value": []gin.H{}})
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": err.Error()})
 		return
 	}
 	defer rows.Close()
@@ -178,11 +191,12 @@ func GetSessions(c *gin.Context) {
 	for rows.Next() {
 		var id, device, ip, location string
 		var lastActive, createdAt time.Time
-		var current bool
-		rows.Scan(&id, &device, &ip, &location, &lastActive, &current, &createdAt)
+		if err := rows.Scan(&id, &device, &ip, &location, &lastActive, &createdAt); err != nil {
+			continue
+		}
 		sessions = append(sessions, gin.H{
 			"id": id, "device": device, "ip": ip, "location": location,
-			"last_active": lastActive.Format(time.RFC3339), "current": current,
+			"last_active": lastActive.Format(time.RFC3339), "current": id == currentSessionID,
 			"created_at": createdAt.Format(time.RFC3339),
 		})
 	}
@@ -198,9 +212,16 @@ func RevokeSession(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"success": true, "message": "Session berhasil dihapus"})
 		return
 	}
+	if sessID == c.GetString("session_id") {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Tidak bisa menghapus sesi yang sedang aktif"})
+		return
+	}
 	userID := c.GetString("user_id")
-	database.DB.Exec("DELETE FROM user_sessions WHERE id=$1 AND user_id=$2 AND is_current=false", sessID, userID)
-	c.JSON(http.StatusOK, gin.H{"success": true})
+	if _, err := database.DB.Exec("DELETE FROM user_sessions WHERE id=$1 AND user_id=$2", sessID, userID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Session berhasil dihapus"})
 }
 
 func RevokeAllSessions(c *gin.Context) {
@@ -209,8 +230,12 @@ func RevokeAllSessions(c *gin.Context) {
 		return
 	}
 	userID := c.GetString("user_id")
-	database.DB.Exec("DELETE FROM user_sessions WHERE user_id=$1 AND is_current=false", userID)
-	c.JSON(http.StatusOK, gin.H{"success": true})
+	currentSessionID := c.GetString("session_id")
+	if _, err := database.DB.Exec("DELETE FROM user_sessions WHERE user_id=$1 AND id<>$2", userID, currentSessionID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Semua session lain berhasil dihapus"})
 }
 
 // ── Audit Trail ───────────────────────────────────────────────────────────────
@@ -411,7 +436,7 @@ func UpdateSecurityPolicy(c *gin.Context) {
 		return
 	}
 	companyID := c.GetString("company_id")
-	database.DB.Exec(`
+	_, err := database.DB.Exec(`
 		INSERT INTO security_policies (company_id, min_password_length, require_uppercase, require_number,
 		require_special, password_expiry_days, max_login_attempts, lockout_minutes, session_timeout_min, enforce_2fa)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
@@ -422,5 +447,9 @@ func UpdateSecurityPolicy(c *gin.Context) {
 		policy.RequireSpecial, policy.PasswordExpiryDays, policy.MaxLoginAttempts,
 		policy.LockoutMinutes, policy.SessionTimeoutMin, policy.Enforce2FA,
 	)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": err.Error()})
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Kebijakan keamanan berhasil disimpan"})
 }

@@ -33,7 +33,7 @@ func Login(c *gin.Context) {
 				IsActive: true,
 			}
 			company := models.Company{ID: "demo-company-id", Name: "PT. Smart Enterprise Indonesia"}
-			token := generateToken(user)
+			token := generateToken(user, "")
 			c.JSON(http.StatusOK, gin.H{"success": true, "data": models.LoginResponse{Token: token, User: user, Company: company}})
 			return
 		}
@@ -61,7 +61,8 @@ func Login(c *gin.Context) {
 	user.LastLogin = &now
 	database.DB.Exec("UPDATE users SET last_login = $1 WHERE id = $2", now, user.ID)
 
-	token := generateToken(user)
+	sessionID := createSession(c, user.ID)
+	token := generateToken(user, sessionID)
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": models.LoginResponse{Token: token, User: user, Company: company}})
 }
 
@@ -78,6 +79,11 @@ func Me(c *gin.Context) {
 }
 
 func Logout(c *gin.Context) {
+	if database.DB != nil {
+		if sessionID := c.GetString("session_id"); sessionID != "" {
+			database.DB.Exec("DELETE FROM user_sessions WHERE id=$1", sessionID)
+		}
+	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "logged out"})
 }
 
@@ -142,7 +148,7 @@ func SwitchCompany(c *gin.Context) {
 		}
 		user := models.User{ID: userID, CompanyID: req.CompanyID, Name: "Admin Sistem", Email: "admin@sep.id", Role: role, IsActive: true}
 		company := models.Company{ID: req.CompanyID, Name: name}
-		token := generateToken(user)
+		token := generateToken(user, "")
 		c.JSON(http.StatusOK, gin.H{"success": true, "data": models.LoginResponse{Token: token, User: user, Company: company}})
 		return
 	}
@@ -168,16 +174,19 @@ func SwitchCompany(c *gin.Context) {
 		return
 	}
 
-	token := generateToken(user)
+	// Re-issues the token for the new company claim but keeps the same session
+	// row alive — switching companies doesn't end the login session.
+	token := generateToken(user, c.GetString("session_id"))
 	database.WriteAuditLog(userID, "SWITCH_COMPANY", "companies", req.CompanyID, "Beralih ke perusahaan: "+company.Name, c.ClientIP())
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": models.LoginResponse{Token: token, User: user, Company: company}})
 }
 
-func generateToken(user models.User) string {
+func generateToken(user models.User, sessionID string) string {
 	claims := middleware.Claims{
 		UserID:    user.ID,
 		CompanyID: user.CompanyID,
 		Role:      user.Role,
+		SessionID: sessionID,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(24 * time.Hour)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
@@ -185,4 +194,20 @@ func generateToken(user models.User) string {
 	}
 	token, _ := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte(jwtSecret))
 	return token
+}
+
+// createSession records a login as a revocable row in user_sessions, whose id
+// becomes the JWT's SessionID claim (see generateToken/AuthMiddleware). Best
+// effort: if it fails, login still proceeds with an empty sessionID, which
+// AuthMiddleware treats as exempt from the revocation check.
+func createSession(c *gin.Context, userID string) string {
+	if database.DB == nil {
+		return ""
+	}
+	var sessionID string
+	database.DB.QueryRow(
+		`INSERT INTO user_sessions (user_id, device, ip) VALUES ($1,$2,$3) RETURNING id`,
+		userID, c.GetHeader("User-Agent"), c.ClientIP(),
+	).Scan(&sessionID)
+	return sessionID
 }
